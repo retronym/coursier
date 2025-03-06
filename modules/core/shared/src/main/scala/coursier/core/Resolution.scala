@@ -563,7 +563,7 @@ object Resolution {
     (config0, parentConfigurations(config0, configurations))
   }
 
-  private def staticProjectProperties(project: Project): Seq[(String, String)] =
+  def staticProjectProperties(project: Project): Seq[(String, String)] =
     // FIXME The extra properties should only be added for Maven projects, not Ivy ones
     Seq(
       // some artifacts seem to require these (e.g. org.jmock:jmock-legacy:2.5.1)
@@ -594,9 +594,9 @@ object Resolution {
   def projectProperties(project: Project): Seq[(String, String)] =
     // loose attempt at substituting properties in each others in properties0
     // doesn't try to go recursive for now, but that could be made so if necessary
-    substitute(project.properties ++ staticProjectProperties(project))
+    project.allProperties
 
-  private def substitute(properties0: Seq[(String, String)]): Seq[(String, String)] = {
+  def substitute(properties0: Seq[(String, String)]): Seq[(String, String)] = {
 
     val done = properties0
       .iterator

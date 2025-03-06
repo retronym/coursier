@@ -284,6 +284,8 @@ object Attributes {
     */
   def actualVersion: String = actualVersionOpt.getOrElse(version)
 
+  lazy val allProperties: Seq[(String, String)] = Resolution.substitute(properties ++ Resolution.staticProjectProperties(this))
+
   final override lazy val hashCode = tuple.hashCode
 }
 
