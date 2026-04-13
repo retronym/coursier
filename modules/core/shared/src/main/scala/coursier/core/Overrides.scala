@@ -1,5 +1,7 @@
 package coursier.core
 
+import java.util.concurrent.ConcurrentMap
+
 sealed abstract class Overrides extends Product with Serializable {
   def get(key: DependencyManagement.Key): Option[DependencyManagement.Values]
   def contains(key: DependencyManagement.Key): Boolean
@@ -37,6 +39,8 @@ sealed abstract class Overrides extends Product with Serializable {
 }
 
 object Overrides {
+  private[coursier] val instanceCache: ConcurrentMap[Overrides, Overrides] =
+    coursier.util.Cache.createCache()
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
 
@@ -100,18 +104,20 @@ object Overrides {
 
   def apply(map: DependencyManagement.GenericMap): Overrides =
     if (map.forall(_._2.isEmpty)) empty
-    else Impl(map.filter(!_._2.isEmpty))
+    else {
+      Impl(map.filter(!_._2.isEmpty).toMap)
+    }
 
   def add(overrides: Overrides*): Overrides =
     overrides.filter(_.nonEmpty) match {
       case Seq()     => empty
       case Seq(elem) => elem
       case more =>
-        Impl(
+        (Impl(
           DependencyManagement.addAll(
             Map.empty[DependencyManagement.Key, DependencyManagement.Values],
             more.flatMap(_.maps)
           )
-        )
+        ))
     }
 }
