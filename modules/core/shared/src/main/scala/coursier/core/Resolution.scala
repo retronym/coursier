@@ -11,6 +11,8 @@ import scala.collection.compat._
 import scala.collection.compat.immutable.LazyList
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
+import java.util.concurrent.ConcurrentMap
+import coursier.core.Overrides.instanceCache
 
 object Resolution {
 
@@ -237,7 +239,8 @@ object Resolution {
   ): DependencyManagement.Values = {
     values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
   }
-
+  private[coursier] val versionConstraintInstanceCache: ConcurrentMap[VersionConstraint0, VersionConstraint0] =
+    coursier.util.Cache.createCache()
   /** Substitutes `properties` in `dependencies`.
     */
   private def withProperties(
@@ -250,12 +253,13 @@ object Resolution {
     if (variant.asConfiguration.exists(_.value.contains("$")) || dep.hasProperties) {
 
       val dep0 = dep
-        .withVersionConstraint(
-          if (dep.versionConstraint.asString.contains("$"))
+        .withVersionConstraint( {
+          val vc = if (dep.versionConstraint.asString.contains("$"))
             VersionConstraint0(properties.substituteTrimmedProps.fasterApply(dep.versionConstraint.asString, dep.parsedVersionConstraint))
           else
             dep.versionConstraint
-        )
+          coursier.util.Cache.cacheMethod(versionConstraintInstanceCache)(vc)
+        })
         .copy(
           module = dep.module.copy(
             organization = dep.module.organization.map(properties.substituteProps0),
