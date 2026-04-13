@@ -13,6 +13,8 @@ import scala.collection.compat.immutable.LazyList
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import java.util.concurrent.atomic.AtomicReferenceArray
+import java.util.concurrent.ConcurrentMap
+import scala.collection.immutable.ArraySeq
 
 object Resolution {
 
@@ -250,7 +252,8 @@ object Resolution {
   ): DependencyManagement.Values = {
     values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
   }
-
+  private[coursier] val versionConstraintInstanceCache: ConcurrentMap[VersionConstraint0, VersionConstraint0] =
+    coursier.util.Cache.createCache()
   /** Substitutes `properties` in `dependencies`.
     */
   private def withProperties(
@@ -265,7 +268,8 @@ object Resolution {
       val dep0 = dep
         .withVersionConstraint( {
           if (dep.parsedVersionConstraint.hasProperties) {
-            VersionConstraint0(dep.parsedVersionConstraint.applySubstitution(dep.versionConstraint.asString, properties.substituteTrimmedProps))
+            val vc1 = VersionConstraint0(dep.parsedVersionConstraint.applySubstitution(dep.versionConstraint.asString, properties.substituteTrimmedProps))
+            coursier.util.Cache.cacheMethod(versionConstraintInstanceCache)(vc1)
           } else {
             dep.versionConstraint
           }
