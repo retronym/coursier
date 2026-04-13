@@ -210,36 +210,50 @@ object DependencyManagement {
       b.result().toMap
     }
 
-  def addAll(
-    initialMap: Map,
-    entries: Seq[GenericMap],
-    composeValues: Boolean = true
-  ): GenericMap =
-    if (entries.forall(_.isEmpty))
-      initialMap
-    else {
-      val b = new mutable.HashMap[Key, Values]
-      b.sizeHint(entries.iterator.map(_.size).sum)
-      val it = entries.iterator.flatMap(_.iterator)
-      while (it.hasNext) {
-        val (key0, incomingValues) = it.next()
-        val newValuesOpt = b.get(key0).orElse(initialMap.get(key0)) match {
-          case Some(previousValues) =>
-            if (composeValues)
-              Some(previousValues.orElse(incomingValues))
-                .filter(_ != previousValues)
-            else
-              None
-          case None =>
-            Some(incomingValues)
+  import java.lang.invoke.{MethodHandles, MethodType}
+  import scala.collection.mutable
+
+  private val lookup = MethodHandles.lookup()
+
+  private final val getOrElseMH =
+    lookup.findVirtual(
+      Class.forName("scala.collection.immutable.HashMapBuilder"),
+      "getOrElse",
+      MethodType.methodType(
+        classOf[java.lang.Object],
+        classOf[java.lang.Object],
+        classOf[java.lang.Object]
+      )
+    )
+
+  def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): Map = {
+    val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+
+    builder ++= initialMap
+
+    val it = entries.iterator.flatMap(_.iterator)
+    while (it.hasNext) {
+      val (key, incoming) = it.next()
+
+      // 🔥 reflective fast-path access into builder's internal map state
+      val prev =
+        getOrElseMH
+          .invoke(builder, key.asInstanceOf[AnyRef], null)
+          .asInstanceOf[Values]
+
+      if (prev != null) {
+        if (composeValues) {
+          val composed = prev.orElse(incoming)
+          if (composed != prev) {
+            builder += (key -> composed)
+          }
         }
-        for (newValues <- newValuesOpt)
-          b += ((key0, newValues))
+      } else {
+        builder += (key -> incoming)
       }
-      if (b.isEmpty) initialMap
-      else if (initialMap.isEmpty) b
-      else initialMap ++ b
     }
+    builder.result()
+  }
 
   def addDependencies(
     map: Map,

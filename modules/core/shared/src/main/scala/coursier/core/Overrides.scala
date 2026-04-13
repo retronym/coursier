@@ -1,6 +1,17 @@
 package coursier.core
 
+import java.util.concurrent.ConcurrentMap
+import scala.util.control.compat.ControlThrowable
+
 sealed abstract class Overrides extends Product with Serializable {
+  private val cache: ConcurrentMap[Any, Any] = new java.util.concurrent.ConcurrentHashMap[Any, Any]()
+  private[core] def cached[T](key: Any)(f: => T): T = {
+    cache.computeIfAbsent(key, _ => {
+      f
+    }).asInstanceOf[T]
+
+  }
+
   def get(key: DependencyManagement.Key): Option[DependencyManagement.Values]
   def contains(key: DependencyManagement.Key): Boolean
   def isEmpty: Boolean
@@ -20,6 +31,7 @@ sealed abstract class Overrides extends Product with Serializable {
       DependencyManagement.Values
     ) => (DependencyManagement.Key, DependencyManagement.Values)
   ): Overrides
+  def transform(f: (DependencyManagement.Key, DependencyManagement.Values) => DependencyManagement.Values): Overrides
   def mapMap(
     f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]
   ): Overrides
@@ -37,6 +49,7 @@ sealed abstract class Overrides extends Product with Serializable {
 }
 
 object Overrides {
+  private val Found = new ControlThrowable() {}
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
 
@@ -46,7 +59,7 @@ object Overrides {
       map.get(key)
     def contains(key: DependencyManagement.Key): Boolean =
       map.contains(key)
-    def isEmpty: Boolean =
+    lazy val isEmpty: Boolean =
       map.forall(_._2.isEmpty)
 
     def maps: Seq[DependencyManagement.GenericMap] =
@@ -77,14 +90,33 @@ object Overrides {
       if (changed) Overrides(updatedMap)
       else this
     }
-    lazy val hasProperties = map.exists { t =>
-      t._1.organization.value.contains("$") ||
-      t._1.name.value.contains("$") ||
-      t._1.classifier.value.contains("$") ||
-      t._1.`type`.value.contains("$") ||
-      t._2.config.value.contains("$") ||
-      t._2.versionConstraint.asString.contains("$") ||
-      t._2.minimizedExclusions.hasProperties
+    def transform(f: (DependencyManagement.Key, DependencyManagement.Values) => DependencyManagement.Values): Overrides = {
+      map match {
+        case immMap: scala.collection.immutable.Map[DependencyManagement.Key, DependencyManagement.Values] =>
+          val transformed = immMap.transform(f)
+          if (transformed eq map) this
+          else Overrides(transformed)
+        case _ =>
+          map((k, v) => (k, f(k, v)))
+      }
+    }
+    lazy val hasProperties = {
+      try {
+        map.foreachEntry((k, v) => {
+          if (
+            k.organization.value.contains("$") ||
+              k.name.value.contains("$") ||
+              k.classifier.value.contains("$") ||
+              k.`type`.value.contains("$") ||
+              v.config.value.contains("$") ||
+              v.versionConstraint.asString.contains("$") ||
+              v.minimizedExclusions.hasProperties
+          ) throw Found
+        })
+        false
+      } catch {
+        case Found => true
+      }
     }
     def mapMap(
       f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]
@@ -98,20 +130,43 @@ object Overrides {
   def empty: Overrides =
     empty0
 
-  def apply(map: DependencyManagement.GenericMap): Overrides =
-    if (map.forall(_._2.isEmpty)) empty
-    else Impl(map.filter(!_._2.isEmpty))
+  def apply(map: DependencyManagement.GenericMap): Overrides = {
+    val emptyCount = map.valuesIterator.count(_.isEmpty)
+    if (emptyCount == map.size) empty
+    else if (emptyCount == 0) Impl(map.toMap)
+    else Impl(map.filter(!_._2.isEmpty).toMap)
+  }
 
+  def add(overrides: Overrides): Overrides = {
+    if (overrides.isEmpty) empty0
+    else overrides
+  }
+  def add(overrides1: Overrides, overrides2: Overrides): Overrides = {
+    val overrides1IsEmpty = overrides1.isEmpty
+    val overrides2IsEmpty = overrides2.isEmpty
+    (overrides1IsEmpty, overrides2IsEmpty) match {
+      case (true, true) => empty0
+      case (true, false) => overrides2
+      case (false, true) => overrides1
+      case _ =>
+        (Impl(
+          DependencyManagement.addAll(
+            Map.empty[DependencyManagement.Key, DependencyManagement.Values],
+            overrides1.maps ++ overrides2.maps
+          )
+        ))
+    }
+  }
   def add(overrides: Overrides*): Overrides =
     overrides.filter(_.nonEmpty) match {
       case Seq()     => empty
       case Seq(elem) => elem
       case more =>
-        Impl(
+        (Impl(
           DependencyManagement.addAll(
             Map.empty[DependencyManagement.Key, DependencyManagement.Values],
             more.flatMap(_.maps)
           )
-        )
+        ))
     }
 }
