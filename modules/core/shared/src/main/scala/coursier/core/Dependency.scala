@@ -36,7 +36,7 @@ import scala.util.hashing.MurmurHash3
   @since("2.1.25")
   endorseStrictVersions: Boolean = false
 ) {
-  assertValid(versionConstraint.asString, "version")
+  //assertValid(versionConstraint.asString, "version")
 
   lazy val parsedVersionConstraint = LazyProperties.parse(versionConstraint.asString)
 
