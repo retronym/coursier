@@ -22,6 +22,7 @@ sealed abstract class Overrides extends Product with Serializable {
       DependencyManagement.Values
     ) => (DependencyManagement.Key, DependencyManagement.Values)
   ): Overrides
+  def transform(f: (DependencyManagement.Key, DependencyManagement.Values) => DependencyManagement.Values): Overrides
   def mapMap(
     f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]
   ): Overrides
@@ -80,6 +81,16 @@ object Overrides {
       }
       if (changed) Overrides(updatedMap)
       else this
+    }
+    def transform(f: (DependencyManagement.Key, DependencyManagement.Values) => DependencyManagement.Values): Overrides = {
+      map match {
+        case immMap: scala.collection.immutable.Map[DependencyManagement.Key, DependencyManagement.Values] =>
+          val transformed = immMap.transform(f)
+          if (transformed eq map) this
+          else Overrides(transformed)
+        case _ =>
+          map((k, v) => (k, f(k, v)))
+      }
     }
     lazy val hasProperties = map.exists { t =>
       t._1.organization.value.contains("$") ||

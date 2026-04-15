@@ -479,7 +479,7 @@ object Resolution {
           case (k, v) =>
             v.config.isEmpty || keepVariant(Variant.Configuration(v.config))
         }
-        .map {
+        .transform {
           case (k, v) =>
             val clearVersion = !forceDepMgmtVersions &&
               versions
@@ -498,7 +498,7 @@ object Resolution {
                 )
               else
                 v
-            (k, values)
+            values
         }
       Overrides.add(
         rawOverrides,
