@@ -1,7 +1,9 @@
 package coursier.core
 
-import coursier.core.Exclusions.{allOrganizations, allNames}
+import coursier.core.Exclusions.{allNames, allOrganizations}
 import dataclass.data
+
+import scala.collection.mutable.ArrayBuffer
 
 /** This file defines a special-purpose structure for exclusions that has the following
   * properties/goals:
@@ -73,6 +75,7 @@ object MinimizedExclusions {
     byModule: Set[ModuleName],
     specific: Set[(Organization, ModuleName)]
   ) extends ExclusionData {
+
     override def apply(org: Organization, module: ModuleName): Boolean =
       !byModule(module) &&
       !byOrg(org) &&
@@ -123,14 +126,26 @@ object MinimizedExclusions {
       : (Boolean, Set[Organization], Set[ModuleName], Set[(Organization, ModuleName)]) =
       (false, byOrg, byModule, specific)
 
-    override def map(f: String => String): ExclusionData =
+    override def map(f: String => String): ExclusionData = {
+      def mapSetSkewedToNoOp[T](s: Set[T])(f: T => T): Set[T] = {
+        val buffer = new ArrayBuffer[T](s.size)
+        var changed = false
+        for (elem <- s) {
+          val t = f(elem)
+          if (t != elem) changed = true
+          buffer += t
+        }
+        if (changed) Set.from(buffer) else s
+      }
+
       ExcludeSpecific(
-        byOrg.map(_.map(f)),
-        byModule.map(_.map(f)),
-        specific.map { case (org, module) =>
+        mapSetSkewedToNoOp(byOrg)(_.map(f)),
+        mapSetSkewedToNoOp(byModule)(_.map(f)),
+        mapSetSkewedToNoOp(specific) { case (org, module) =>
           org.map(f) -> module.map(f)
         }
       )
+    }
 
     override def size(): Int = byOrg.size + byModule.size + specific.size
 

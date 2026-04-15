@@ -102,13 +102,7 @@ object Overrides {
       try {
         map.foreachEntry((k, v) => {
           if (
-            k.organization.value.contains("$") ||
-              k.name.value.contains("$") ||
-              k.classifier.value.contains("$") ||
-              k.`type`.value.contains("$") ||
-              v.config.value.contains("$") ||
-              v.versionConstraint.asString.contains("$") ||
-              v.minimizedExclusions.hasProperties
+            k.hasProperties || v.hasProperties
           ) throw Found
         })
         false

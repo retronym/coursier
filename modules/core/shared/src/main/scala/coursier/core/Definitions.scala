@@ -1,16 +1,23 @@
 package coursier.core
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
-
 import coursier.core.Validation._
 import coursier.error.VariantError
 import coursier.util.Artifact
 import coursier.version.{Version => Version0}
 import dataclass.data
+import scala.util.hashing.MurmurHash3
 
-final case class Organization(value: String) extends AnyVal {
-  def map(f: String => String): Organization =
-    Organization(f(value))
+final case class Organization(value: String) {
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Organization = {
+    val o = parsedValue.applySubstitution(value, f)
+    if (o eq value) this
+    else Organization(o)
+  }
+
+  override val hashCode = MurmurHash3.productHash(this)
 }
 
 object Organization {
@@ -18,9 +25,14 @@ object Organization {
     Ordering[String].on(_.value)
 }
 
-final case class ModuleName(value: String) extends AnyVal {
-  def map(f: String => String): ModuleName =
-    ModuleName(f(value))
+final case class ModuleName(value: String) {
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): ModuleName = {
+    val newName = parsedValue.applySubstitution(value, f)
+    if (newName eq value) this
+    else ModuleName(newName)
+  }
+  override lazy val hashCode = MurmurHash3.productHash(this)
 }
 
 object ModuleName {
@@ -91,13 +103,17 @@ object Module {
     coursier.util.Cache.cacheMethod(instanceCache)(new Module(organization, name, attributes))
 }
 
-final case class Type(value: String) extends AnyVal {
+final case class Type(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
-  def map(f: String => String): Type =
-    Type(f(value))
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Type = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Type(newValue)
+  }
 
   def asExtension: Extension =
     Extension(value)
@@ -141,13 +157,18 @@ object Type {
   }
 }
 
-final case class Classifier(value: String) extends AnyVal {
+final case class Classifier(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
-  def map(f: String => String): Classifier =
-    Classifier(f(value))
+
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Classifier = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Classifier(newValue)
+  }
 }
 
 object Classifier {
@@ -181,15 +202,20 @@ object Extension {
   val empty = Extension("")
 }
 
-final case class Configuration(value: String) extends AnyVal {
+final case class Configuration(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
   def -->(target: Configuration): Configuration =
     Configuration(s"$value->${target.value}")
-  def map(f: String => String): Configuration =
-    Configuration(f(value))
+
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Configuration = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Configuration(newValue)
+  }
 }
 
 object Configuration {
@@ -278,6 +304,7 @@ object Attributes {
   variantPublications: Map[Variant.Attributes, Seq[VariantPublication]]
 ) {
 
+  lazy val parsedVersion0 = PropertyExpr.parse(version0.asString)
   @deprecated("Use dependencies0 instead", "2.1.25")
   def dependencies: Seq[(Configuration, Dependency)] =
     dependencies0.map {
@@ -571,6 +598,22 @@ object Attributes {
 }
 
 object Project {
+
+  private[this] val legacyPropertiesReporter =
+    new ConcurrentHashMap[Int, java.lang.Boolean]
+
+  private[this] val stackFrameExclusionPrefixes =
+    Array(
+      "java.lang.Thread",
+      "coursier.core.Project",
+      "scala.",
+      "sun.reflect.",
+      "jdk.internal.reflect.",
+      "java.lang.reflect.",
+      "org.openjdk.jmh."
+    )
+
+
 
   @deprecated("Use the override accepting Version-s instead", "2.1.25")
   def apply(

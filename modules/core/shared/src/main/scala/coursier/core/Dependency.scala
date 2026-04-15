@@ -36,6 +36,9 @@ import java.util.concurrent.ConcurrentMap
   endorseStrictVersions: Boolean = false
 ) {
   assertValid(versionConstraint.asString, "version")
+
+  lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
+
   def moduleVersionConstraint: (Module, VersionConstraint0) = (module, versionConstraint)
 
   @deprecated("Prefer moduleVersionConstraint instead", "2.1.25")
@@ -477,23 +480,25 @@ object Dependency {
     bomDependencies: Seq[BomDependency],
     overridesMap: Overrides,
     endorseStrictVersions: Boolean
-  ): Dependency =
-    coursier.util.Cache.cacheMethod(instanceCache)(
-      new Dependency(
-        module,
-        versionConstraint,
-        variantSelector,
-        minimizedExclusions,
-        publication,
-        optional,
-        transitive,
-        overrides,
-        boms,
-        bomDependencies,
-        overridesMap,
-        endorseStrictVersions
-      )
+  ): Dependency = {
+    val dep = new Dependency(
+      module,
+      versionConstraint,
+      variantSelector,
+      minimizedExclusions,
+      publication,
+      optional,
+      transitive,
+      overrides,
+      boms,
+      bomDependencies,
+      overridesMap,
+      endorseStrictVersions
     )
+//    if (overrides.isEmpty) coursier.util.Cache.cacheMethod(instanceCache)(dep)
+//    else dep
+    dep
+  }
 
   @deprecated("Use the override accepting a VersionConstraint", "2.1.25")
   def apply(
