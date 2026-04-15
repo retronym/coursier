@@ -5,7 +5,6 @@ import coursier.version.{VersionConstraint => VersionConstraint0}
 import dataclass.{data, since}
 
 import java.util.concurrent.ConcurrentMap
-import scala.util.hashing.MurmurHash3
 
 /** Dependencies with the same @module will typically see their @version-s merged.
   *
@@ -460,8 +459,22 @@ import scala.util.hashing.MurmurHash3
   }
 
   override lazy val hashCode: Int = {
-    MurmurHash3.productHash(this)
+    var h = scala.util.hashing.MurmurHash3.stringHash("Dependency")
+    h = scala.util.hashing.MurmurHash3.mix(h, module.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, versionConstraint.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, variantSelector.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, minimizedExclusions.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, publication.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, optional.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, transitive.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, overrides.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, deprecatedBoms.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, bomDependencies.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, overridesMap.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, endorseStrictVersions.hashCode)
+    scala.util.hashing.MurmurHash3.finalizeHash(h, 13)
   }
+
 }
 
 object Dependency {
