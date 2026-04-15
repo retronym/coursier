@@ -50,7 +50,7 @@ object Overrides {
       map.get(key)
     def contains(key: DependencyManagement.Key): Boolean =
       map.contains(key)
-    def isEmpty: Boolean =
+    lazy val isEmpty: Boolean =
       map.forall(_._2.isEmpty)
 
     def maps: Seq[DependencyManagement.GenericMap] =

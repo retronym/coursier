@@ -210,37 +210,123 @@ object DependencyManagement {
       b.result().toMap
     }
 
+  import java.lang.invoke.{MethodHandles, MethodType}
+  import scala.collection.mutable
+
+  private val lookup = MethodHandles.lookup()
+
+  private final val getOrElseMH =
+    lookup.findVirtual(
+      Class.forName("scala.collection.immutable.HashMapBuilder"),
+      "getOrElse",
+      MethodType.methodType(
+        classOf[java.lang.Object],
+        classOf[java.lang.Object],
+        classOf[java.lang.Object]
+      )
+    )
+
+  final case class CacheKey(
+                             initial: Map,
+                             entries: Seq[GenericMap],
+                             composeValues: Boolean
+                           ) {
+    override lazy val hashCode = scala.util.hashing.MurmurHash3.productHash(this)
+  }
+  import java.util.concurrent.ConcurrentHashMap
+  import java.util.concurrent.atomic.LongAdder
+  object AddAllCache {
+    private val cache =
+      new ConcurrentHashMap[CacheKey, Map]()
+
+    val hits   = new LongAdder()
+    val misses = new LongAdder()
+
+    def getOrCompute(key: CacheKey)(compute: => Map): Map = {
+//      stats()
+      val existing = cache.get(key)
+      if (existing != null) {
+        hits.increment()
+        existing
+      } else {
+        misses.increment()
+        val value = compute
+        val prev = cache.putIfAbsent(key, value)
+        if (prev != null) prev else value
+      }
+    }
+
+    def stats(): Unit = {
+      val h = hits.sum()
+      val m = misses.sum()
+      val total = h + m
+      val hitRate =
+        if (total == 0) 0.0
+        else h.toDouble / total
+
+      println(
+        f"[AddAllCache] hits=$h%,d misses=$m%,d hitRate=${hitRate * 100}%.2f%% size=${cache.size()}"
+      )
+    }
+    // 👇 shutdown hook
+    println(">[AddAllCache] starting up...")
+    Runtime.getRuntime.addShutdownHook(new Thread(() => {
+     stats()
+    }))
+
+  }
   def addAll(
     initialMap: Map,
     entries: Seq[GenericMap],
     composeValues: Boolean = true
-  ): GenericMap =
+                  ): Map = {
+    val key = CacheKey(initialMap, entries, composeValues)
+
+    AddAllCache.getOrCompute(key) {
+      addAllUncached(initialMap, entries, composeValues)
+    }
+
+  }
+  def addAllUncached(
+              initialMap: Map,
+              entries: Seq[GenericMap],
+              composeValues: Boolean = true
+            ): Map = {
+
+
     if (entries.forall(_.isEmpty))
       initialMap
     else {
-      val b = new mutable.HashMap[Key, Values]
-      b.sizeHint(entries.iterator.map(_.size).sum)
+
+      val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+
+      builder ++= initialMap
+
       val it = entries.iterator.flatMap(_.iterator)
       while (it.hasNext) {
-        val (key0, incomingValues) = it.next()
-        val newValuesOpt = b.get(key0).orElse(initialMap.get(key0)) match {
-          case Some(previousValues) =>
-            if (composeValues)
-              Some(previousValues.orElse(incomingValues))
-                .filter(_ != previousValues)
-            else
-              None
-          case None =>
-            Some(incomingValues)
+        val (key, incoming) = it.next()
+
+        // 🔥 reflective fast-path access into builder's internal map state
+        val prev =
+          getOrElseMH
+            .invoke(builder, key.asInstanceOf[AnyRef], null)
+            .asInstanceOf[Values]
+
+        if (prev != null) {
+          if (composeValues) {
+            val composed = prev.orElse(incoming)
+            if (composed != prev) {
+              builder += (key -> composed)
         }
-        for (newValues <- newValuesOpt)
-          b += ((key0, newValues))
+          }
+        } else {
+          builder += (key -> incoming)
+        }
       }
-      if (b.isEmpty) initialMap
-      else if (initialMap.isEmpty) b
-      else initialMap ++ b
+      builder.result()
     }
 
+  }
   def addDependencies(
     map: Map,
     deps: Seq[(Configuration, Dependency)],
@@ -254,4 +340,5 @@ object DependencyManagement {
       },
       composeValues = composeValues
     )
+
 }
