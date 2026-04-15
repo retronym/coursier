@@ -1611,10 +1611,10 @@ object Resolution {
       for {
         dep   <- updatedDeps
         trDep <- finalDependencies0(dep).toOption.getOrElse(Nil)
-      } yield trDep.clearVersion -> dep.clearVersion
-
+      } yield trDep.clearVersion.clearOverrides -> dep.clearVersion
+    
     val knownDeps = (updatedDeps ++ updatedConflicts)
-      .map(_.clearVersion)
+      .map(_.clearVersion.clearOverrides)
       .toSet
 
     trDepsSeq
@@ -1631,7 +1631,7 @@ object Resolution {
     * The versions of all the dependencies returned are erased (emptied).
     */
   lazy val remainingDependencies: Set[Dependency] = {
-    val rootDependencies0 = processedRootDependencies.map(_.clearVersion).toSet
+    val rootDependencies0 = processedRootDependencies.map(_.clearVersion.clearOverrides).toSet
 
     @tailrec
     def helper(
@@ -1667,7 +1667,7 @@ object Resolution {
     val remainingDependencies0 = remainingDependencies
 
     nextDependenciesAndConflicts._2
-      .filter(dep => remainingDependencies0(dep.clearVersion))
+      .filter(dep => remainingDependencies0(dep.clearVersion.clearOverrides))
       .toSet
   }
 
