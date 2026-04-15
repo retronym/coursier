@@ -5,6 +5,7 @@ import coursier.version.{VersionConstraint => VersionConstraint0}
 import dataclass.{data, since}
 
 import java.util.concurrent.ConcurrentMap
+import scala.util.hashing.MurmurHash3
 
 /** Dependencies with the same @module will typically see their @version-s merged.
   *
@@ -458,8 +459,9 @@ import java.util.concurrent.ConcurrentMap
     s"Dependency(${fields.mkString(", ")})"
   }
 
-  override lazy val hashCode: Int =
-    tuple.hashCode()
+  override lazy val hashCode: Int = {
+    MurmurHash3.productHash(this)
+  }
 }
 
 object Dependency {
