@@ -225,24 +225,32 @@ final case class Configuration(value: String) {
 }
 
 object Configuration {
+  def apply(value: String): Configuration = {
+    // looks weird to this for a value class, but we're basically interning the String
+    // without the downsides of String.intern
+    standard.getOrElse(value, new Configuration(value))
+  }
   implicit val ordering: Ordering[Configuration] =
     Ordering[String].on(_.value)
 
-  val empty = Configuration("")
+  val empty = new Configuration("")
 
-  val compile = Configuration("compile")
-  val runtime = Configuration("runtime")
-  val test    = Configuration("test")
+  val compile = new Configuration("compile")
+  val runtime = new Configuration("runtime")
+  val test    = new Configuration("test")
 
-  val default        = Configuration("default")
-  val defaultCompile = Configuration("default(compile)")
-  val defaultRuntime = Configuration("default(runtime)")
+  val default        = new Configuration("default")
+  val defaultCompile = new Configuration("default(compile)")
+  val defaultRuntime = new Configuration("default(runtime)")
 
-  val provided = Configuration("provided")
-  val `import` = Configuration("import")
-  val optional = Configuration("optional")
+  val provided = new Configuration("provided")
+  val `import` = new Configuration("import")
+  val optional = new Configuration("optional")
 
-  val all = Configuration("*")
+  val all = new Configuration("*")
+  private val standard: Map[String, Configuration] = Vector[Configuration](
+    compile, runtime, test, default, defaultCompile, defaultRuntime, provided, `import`, optional, all
+  ).map(x => (x.value, x)).toMap
 
   def join(confs: Configuration*): Configuration =
     Configuration(confs.map(_.value).mkString(";"))
