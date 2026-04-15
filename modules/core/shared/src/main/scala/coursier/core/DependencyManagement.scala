@@ -53,7 +53,7 @@ object DependencyManagement {
       dep.depManagementKey
   }
 
-  @data class Values(
+  @data(cachedHashCode = true) class Values(
     config: Configuration,
     versionConstraint: VersionConstraint0,
     minimizedExclusions: MinimizedExclusions,
