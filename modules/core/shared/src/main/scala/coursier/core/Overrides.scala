@@ -44,7 +44,18 @@ object Overrides {
     coursier.util.Cache.createCache()
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
-
+    override def equals(obj: Any): Boolean = {
+      obj match {
+        case that: Impl =>
+          val result = map.equals(that.map)
+          if (!map.isEmpty) {
+//            println(("Impl.equals", map.getClass, that.map.getClass, result))
+//            println(("Impl.equals", map.keys.toSeq.map(_.repr)))
+          }
+          result
+        case _ => false
+      }
+    }
     override lazy val hashCode: Int = map.hashCode()
 
     def get(key: DependencyManagement.Key): Option[DependencyManagement.Values] =
@@ -93,13 +104,7 @@ object Overrides {
       }
     }
     lazy val hasProperties = map.exists { t =>
-      t._1.organization.value.contains("$") ||
-      t._1.name.value.contains("$") ||
-      t._1.classifier.value.contains("$") ||
-      t._1.`type`.value.contains("$") ||
-      t._2.config.value.contains("$") ||
-      t._2.versionConstraint.asString.contains("$") ||
-      t._2.minimizedExclusions.hasProperties
+      t._1.hasProperties || t._2.hasProperties
     }
     def mapMap(
       f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]

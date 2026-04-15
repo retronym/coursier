@@ -1,9 +1,7 @@
 package coursier.core
 
-import coursier.version.{
-  VersionConstraint => VersionConstraint0,
-  VersionInterval => VersionInterval0
-}
+import coursier.core.LazyProperties.NoSubstitutions
+import coursier.version.{VersionConstraint => VersionConstraint0, VersionInterval => VersionInterval0}
 import dataclass.{data, since}
 
 import scala.collection.mutable
@@ -18,6 +16,12 @@ object DependencyManagement {
     `type`: Type,
     classifier: Classifier
   ) {
+    private lazy val orgHasProperties = organization.parsedValue ne NoSubstitutions
+    private lazy val nameIndexOfDollar = name.value.indexOf('$')
+    private lazy val typeIndexOfDollar = `type`.value.indexOf('$')
+    private lazy val classifierIndexOfDollar = classifier.value.indexOf('$')
+    val hasProperties = orgHasProperties || nameIndexOfDollar >= 0 || typeIndexOfDollar >= 0 || classifierIndexOfDollar >= 0
+
     def map(f: String => String): Key = {
       val newOrg        = organization.map(f)
       val newName       = name.map(f)
@@ -109,8 +113,9 @@ object DependencyManagement {
       else
         this
     }
+    private val parsedConfig = LazyProperties.parse(config.value)
     def mapButVersion(f: String => String): Values = {
-      val newConfig = config.map(f)
+      val newConfig = Configuration(LazyProperties.fastApply(config.value, parsedConfig, f))
       val newExcl   = minimizedExclusions.map(f)
       if (config != newConfig || minimizedExclusions != newExcl)
         Values(
@@ -123,12 +128,15 @@ object DependencyManagement {
       else
         this
     }
+    private lazy val parsedVersionConstraint = LazyProperties.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
-      val newVersion = f(versionConstraint.asString)
+      val newVersion = LazyProperties.fastApply(versionConstraint.asString, parsedVersionConstraint, f)
       if (versionConstraint.asString == newVersion) this
       else withVersionConstraint(VersionConstraint0(newVersion))
     }
-
+    val hasProperties =  config.value.contains("$") ||
+      versionConstraint.asString.contains("$") ||
+      minimizedExclusions.hasProperties
     override def toString(): String = {
       var fields = Seq(
         config.toString,

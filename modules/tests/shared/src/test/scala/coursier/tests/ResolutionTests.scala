@@ -873,12 +873,47 @@ object ResolutionTests extends TestSuite {
         val res =
           Resolution.withProperties0(
             Seq(Variant.emptyConfiguration -> dep"a-company:a-name:$${a.property}"),
-            Map("a.property"               -> "a-version")
+            new coursier.core.Resolution.PropertiesWrapper(Map("a.property"               -> "a-version"))
           )
         val expected =
           Seq(Variant.emptyConfiguration -> dep"a-company:a-name:a-version")
 
         assert(res == expected)
+      }
+
+      test("missingPropertyIsPreserved") {
+        val res = Resolution.substituteProps(
+          "prefix-$${missing}-suffix",
+          Map.empty
+        )
+
+        assert(res == "prefix-$${missing}-suffix")
+      }
+
+      test("malformedPropertyReferenceIsPreserved") {
+        val res = Resolution.substituteProps(
+          "prefix-$${missing",
+          Map("missing" -> "value")
+        )
+
+        assert(res == "prefix-$${missing")
+      }
+
+      test("duplicateProjectPropertiesReachFixpoint") {
+        val props = Resolution.projectProperties(
+          Project(
+            mod"acme:dupe-props",
+            "1.0",
+            properties = Seq(
+              "a" -> "1",
+              "a" -> "${a}2"
+            )
+          )
+        )
+
+        assert(props.getClass.getName.contains("LazyProperties"))
+        assert(props.take(2) == Seq("a" -> "1", "a" -> "12"))
+        assert(props.toMap.apply("a") == "12")
       }
     }
 

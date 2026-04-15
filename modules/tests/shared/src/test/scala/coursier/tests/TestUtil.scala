@@ -4,6 +4,7 @@ import coursier.core.{
   Configuration,
   Dependency,
   Info,
+  LazyProperties,
   Module,
   Overrides,
   Profile,
@@ -69,7 +70,12 @@ object TestUtil {
           .view
           .mapValues {
             case (s, p) =>
-              (s, p.withProperties(p.properties.filter { case (k, _) => !projectProperties(k) }))
+              (
+                s,
+                p.withProperties(
+                  LazyProperties.concat(Seq(p.properties.filter { case (k, _) => !projectProperties(k) }))
+                )
+              )
           }
           .iterator
           .toMap
@@ -128,7 +134,7 @@ object TestUtil {
             (mod, Version(ver))
         },
         dependencyManagement,
-        properties,
+        LazyProperties.concat(Seq(properties)),
         profiles,
         versions,
         snapshotVersioning,

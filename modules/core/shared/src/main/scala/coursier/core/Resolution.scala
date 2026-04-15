@@ -2,15 +2,10 @@ package coursier.core
 
 import coursier.error.{DependencyError, VariantError}
 import coursier.util.Artifact
-import coursier.version.{
-  ConstraintReconciliation,
-  Version => Version0,
-  VersionConstraint => VersionConstraint0
-}
+import coursier.version.{ConstraintReconciliation, Version => Version0, VersionConstraint => VersionConstraint0}
 import dataclass.data
 
 import java.util.concurrent.ConcurrentHashMap
-
 import scala.annotation.tailrec
 import scala.collection.compat._
 import scala.collection.compat.immutable.LazyList
@@ -116,98 +111,18 @@ object Resolution {
     acc
   }
 
-  def hasProps(s: String): Boolean = {
-
-    var ok  = false
-    var idx = 0
-
-    while (idx < s.length && !ok) {
-      var dolIdx = idx
-      while (dolIdx < s.length && s.charAt(dolIdx) != '$')
-        dolIdx += 1
-      idx = dolIdx
-
-      if (dolIdx < s.length - 2 && s.charAt(dolIdx + 1) == '{') {
-        var endIdx = dolIdx + 2
-        while (endIdx < s.length && s.charAt(endIdx) != '}')
-          endIdx += 1
-        if (endIdx < s.length) {
-          assert(s.charAt(endIdx) == '}')
-          ok = true
-        }
-      }
-
-      if (!ok && idx < s.length) {
-        assert(s.charAt(idx) == '$')
-        idx += 1
-      }
-    }
-
-    ok
-  }
-
   def substituteProps(s: String, properties: Map[String, String]): String =
     substituteProps(s, properties, trim = false)
 
-  def substituteProps(s: String, properties: Map[String, String], trim: Boolean): String = {
-
-    // this method is called _very_ often, hence the micro-optimization
-
-    var b: java.lang.StringBuilder = null
-    var idx                        = 0
-
-    while (idx < s.length) {
-      var dolIdx = idx
-      while (dolIdx < s.length && s.charAt(dolIdx) != '$')
-        dolIdx += 1
-      if (idx != 0 || dolIdx < s.length) {
-        if (b == null)
-          b = new java.lang.StringBuilder(s.length + 32)
-        b.append(s, idx, dolIdx)
-      }
-      idx = dolIdx
-
-      var name: String = null
-      if (dolIdx < s.length - 2 && s.charAt(dolIdx + 1) == '{') {
-        var endIdx = dolIdx + 2
-        while (endIdx < s.length && s.charAt(endIdx) != '}')
-          endIdx += 1
-        if (endIdx < s.length) {
-          assert(s.charAt(endIdx) == '}')
-          name = s.substring(dolIdx + 2, endIdx)
-        }
-      }
-
-      if (name == null) {
-        if (idx < s.length) {
-          assert(s.charAt(idx) == '$')
-          b.append('$')
-          idx += 1
-        }
-      }
-      else {
-        idx = idx + 2 + name.length + 1 // == endIdx + 1
-        properties.get(name) match {
-          case None =>
-            b.append(s, dolIdx, idx)
-          case Some(v) =>
-            val v0 = if (trim) v.trim else v
-            b.append(v0)
-        }
-      }
-    }
-
-    if (b == null)
-      s
-    else
-      b.toString
-  }
+  def substituteProps(s: String, properties: Map[String, String], trim: Boolean): String =
+    LazyProperties.substitute(s, properties, trim)
 
   def withProperties0(
     dependencies: Seq[(Variant, Dependency)],
-    properties: Map[String, String]
-  ): Seq[(Variant, Dependency)] =
+    properties: PropertiesWrapper
+  ): Seq[(Variant, Dependency)] = {
     dependencies.map(withProperties(_, properties))
+  }
 
   @deprecated("Use withProperties0 instead", "2.1.25")
   def withProperties(
@@ -219,7 +134,7 @@ object Resolution {
         case (config, dep) =>
           (Variant.Configuration(config), dep)
       },
-      properties
+      new PropertiesWrapper(properties)
     ).map {
       case (c: Variant.Configuration, dep) =>
         (c.configuration, dep)
@@ -227,25 +142,77 @@ object Resolution {
         sys.error("Deprecated method doesn't support Gradle Module variants")
     }
 
+  final class PropertiesWrapper(val properties: Map[String, String]) {
+    val substituteTrimmedProps = new LazyProperties.Substitution(properties, true)
+    val substituteProps0 = new LazyProperties.Substitution(properties, false)
+  }
+
   private def withProperties(
     map: DependencyManagement.GenericMap,
-    properties: Map[String, String]
+    properties: PropertiesWrapper
   ): Option[DependencyManagement.Map] = {
-    val b       = new mutable.HashMap[DependencyManagement.Key, DependencyManagement.Values]
-    var changed = false
-    for (kv <- map) {
-      val (k0, v0) = withProperties(kv, properties)
-      if (!changed && (k0 != kv._1 || v0 != kv._2))
-        changed = true
-      b(k0) = b.get(k0).fold(v0)(_.orElse(v0))
+    map match {
+      case im: scala.collection.immutable.Map[DependencyManagement.Key, DependencyManagement.Values]
+        if !map.keysIterator.exists(_.hasProperties) =>
+        var changed = false
+        val b = im.transform((k, v) => {
+          val v0 = withProperties(v, properties)
+          if (!changed && (v0 != v))
+            changed = true
+          v0
+          }
+        )
+        if (changed) Some(b)
+        else None
+
+      case _ =>
+        val b = new java.util.HashMap[DependencyManagement.Key, DependencyManagement.Values]()
+        var changed = false
+
+        val it = map.iterator
+        while (it.hasNext) {
+          val kv = it.next()
+          if (kv._1.hasProperties) {
+            val (k0, v0) = withProperties(kv, properties)
+
+            if (!changed && (k0 != kv._1 || v0 != kv._2))
+              changed = true
+
+            val existing = b.get(k0)
+            if (existing == null) {
+              b.put(k0, v0)
+            } else {
+              b.put(k0, existing.orElse(v0))
+            }
+          } else {
+            val v0 = withProperties(kv._2, properties)
+
+            if (!changed && (v0 != kv._2))
+              changed = true
+
+            val existing = b.get(kv._1)
+            if (existing == null) {
+              b.put(kv._1, v0)
+            } else {
+              b.put(kv._1, existing.orElse(v0))
+            }
+          }
+
+        }
+
+        if (changed) {
+          // convert java.util.HashMap -> scala immutable.Map
+          Some(b.asScala.toMap)
+        } else {
+          None
+        }
     }
-    if (changed) Some(b.toMap)
-    else None
+
   }
 
   private def withProperties(
     overrides: Overrides,
-    properties: Map[String, String]
+    properties: PropertiesWrapper
   ): Overrides =
     if (overrides.hasProperties)
       overrides.mapMap(withProperties(_, properties))
@@ -254,66 +221,63 @@ object Resolution {
 
   private def withProperties(
     entry: (DependencyManagement.Key, DependencyManagement.Values),
-    properties: Map[String, String]
+    properties: PropertiesWrapper
   ): (DependencyManagement.Key, DependencyManagement.Values) = {
 
-    def substituteTrimmedProps(s: String) =
-      substituteProps(s, properties, trim = true)
-    def substituteProps0(s: String) =
-      substituteProps(s, properties, trim = false)
-
     val (key, values) = entry
-
-    (
-      key.map(substituteProps0),
-      values.mapButVersion(substituteProps0).mapVersion(substituteTrimmedProps)
-    )
+    val newKey = key.map(properties.substituteProps0)
+    val newValues = values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
+    if ((newKey eq key) && (newValues eq values)) {
+      entry
+    } else (newKey, newValues)
+  }
+  private def withProperties(
+    values: DependencyManagement.Values,
+    properties: PropertiesWrapper
+  ): DependencyManagement.Values = {
+    values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
   }
 
   /** Substitutes `properties` in `dependencies`.
     */
   private def withProperties(
     variantDep: (Variant, Dependency),
-    properties: Map[String, String]
+    properties: PropertiesWrapper
   ): (Variant, Dependency) = {
 
     val (variant, dep) = variantDep
 
     if (variant.asConfiguration.exists(_.value.contains("$")) || dep.hasProperties) {
 
-      def substituteTrimmedProps(s: String) =
-        substituteProps(s, properties, trim = true)
-      def substituteProps0(s: String) =
-        substituteProps(s, properties, trim = false)
-
       val dep0 = dep
         .withVersionConstraint(
           if (dep.versionConstraint.asString.contains("$"))
-            VersionConstraint0(substituteTrimmedProps(dep.versionConstraint.asString))
+            VersionConstraint0(properties.substituteTrimmedProps.fasterApply(dep.versionConstraint.asString, dep.parsedVersionConstraint))
           else
             dep.versionConstraint
         )
         .copy(
           module = dep.module.copy(
-            organization = dep.module.organization.map(substituteProps0),
-            name = dep.module.name.map(substituteProps0)
+            organization = dep.module.organization.map(properties.substituteProps0),
+            name = dep.module.name.map(properties.substituteProps0)
           ),
           attributes = dep.attributes
-            .withType(dep.attributes.`type`.map(substituteProps0))
-            .withClassifier(dep.attributes.classifier.map(substituteProps0)),
+            .withType(dep.attributes.`type`.map(properties.substituteProps0))
+            .withClassifier(dep.attributes.classifier.map(properties.substituteProps0)),
           variantSelector = dep.variantSelector
             .asConfiguration
-            .map(_.map(substituteProps0))
+            .map(_.map(properties.substituteProps0))
             .map(VariantSelector.ConfigurationBased(_))
             .getOrElse(dep.variantSelector),
-          minimizedExclusions = dep.minimizedExclusions.map(substituteProps0)
+          minimizedExclusions = dep.minimizedExclusions.map(properties.substituteProps0)
         )
-
-      val finalVariant = variant
-        .asConfiguration
-        .map(_.map(substituteProps0))
-        .map(Variant.Configuration(_))
-        .getOrElse(variant)
+      val finalVariant = variant.asConfiguration match {
+        case s @ Some(x) =>
+          val newConfig = x.map(properties.substituteProps0)
+          Variant.Configuration(newConfig)
+        case None =>
+          variant
+      }
 
       // FIXME The content of the optional tag may also be a property in
       // the original POM. Maybe not parse it that earlier?
@@ -451,9 +415,10 @@ object Resolution {
     keepVariant: Variant => Boolean
   ): Seq[(Variant, Dependency)] = {
 
-    val dependencies         = withProperties0(rawDependencies, properties)
-    val overridesOpt         = rawOverridesOpt.map(withProperties(_, properties))
-    val dependencyManagement = withProperties(rawDependencyManagement, properties)
+    val propertiesWrapper    = new PropertiesWrapper(properties)
+    val dependencies         = withProperties0(rawDependencies, propertiesWrapper)
+    val overridesOpt         = rawOverridesOpt.map(withProperties(_, propertiesWrapper))
+    val dependencyManagement = withProperties(rawDependencyManagement, propertiesWrapper)
 
     // See http://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html#Dependency_Management
 
@@ -765,35 +730,7 @@ object Resolution {
     }
 
   def projectProperties(project: Project): Seq[(String, String)] =
-    // loose attempt at substituting properties in each others in properties0
-    // doesn't try to go recursive for now, but that could be made so if necessary
-    substitute(project.properties ++ staticProjectProperties(project))
-
-  private def substitute(properties0: Seq[(String, String)]): Seq[(String, String)] = {
-
-    val done = properties0
-      .iterator
-      .collect {
-        case kv @ (_, value) if !hasProps(value) =>
-          kv
-      }
-      .toMap
-
-    var didSubstitutions = false
-
-    val res = properties0.map {
-      case (k, v) =>
-        val res = substituteProps(v, done)
-        if (!didSubstitutions)
-          didSubstitutions = res != v
-        k -> res
-    }
-
-    if (didSubstitutions)
-      substitute(res)
-    else
-      res
-  }
+      LazyProperties.concat(project.properties, staticProjectProperties(project))
 
   private def parents(
     project: Project,
@@ -828,12 +765,14 @@ object Resolution {
 
     // section numbers in the comments refer to withDependencyManagement
 
-    val parentProperties0 = parents(project, projectCache)
-      .toVector
-      .flatMap(_.properties)
+    val parentProperties0 = LazyProperties.concat(
+      parents(project, projectCache)
+        .toVector
+        .map(_.properties)
+    )
 
     val projectWithProperties = withFinalProperties(
-      project.withProperties(parentProperties0 ++ project.properties)
+      project.withProperties(LazyProperties.concat(parentProperties0, project.properties))
     )
 
     val actualConfigOrError = finalSelector(
@@ -1298,9 +1237,13 @@ object Resolution {
             val p0 =
               withDependencyManagement(
                 p.withProperties(
-                  extraProperties ++
-                    p.properties.filter(kv => !forceProperties.contains(kv._1)) ++
-                    forceProperties
+                  LazyProperties.concat(
+                    Seq(
+                      extraProperties,
+                      LazyProperties.filterKeysNotIn(p.properties, forceProperties.keySet),
+                      forceProperties.toVector
+                    )
+                  )
                 )
               )
             (modVer, (s, p0))
@@ -1523,7 +1466,7 @@ object Resolution {
           (k, v) =>
             v.config.isEmpty || keepConfigs.contains(v.config)
         }
-        withProperties(retainedEntries, projectProperties(bomProject).toMap)
+        withProperties(retainedEntries, new PropertiesWrapper(projectProperties(bomProject).toMap))
       }): _*
     }
   lazy val bomDepMgmtOverrides = bomEntries(globalBomModuleVersions)
@@ -1775,16 +1718,18 @@ object Resolution {
         .toSet
     else {
 
-      val parentProperties0 = parents(project, k => projectCache0.get(k).map(_._2))
-        .toVector
-        .flatMap(_.properties)
+      val parentProperties0 = LazyProperties.concat(
+        parents(project, k => projectCache0.get(k).map(_._2))
+          .toVector
+          .map(_.properties)
+      )
 
       // 1.1 (see above)
-      val approxProperties = parentProperties0.toMap ++ projectProperties(project)
+      val approxProperties = LazyProperties.concat(parentProperties0, projectProperties(project))
 
       val profiles = profiles0(
         project,
-        approxProperties,
+        approxProperties.toMap,
         osInfo,
         jdkVersion0,
         userActivations
@@ -1792,20 +1737,24 @@ object Resolution {
 
       val profileDependencies = profiles.flatMap(p => p.dependencies ++ p.dependencyManagement)
 
+      val profileProperties = LazyProperties.concatLayerMaps(
+        profiles.map(_.properties)
+      )
+
       val project0 =
         project.withProperties(
-          project.properties ++ profiles.flatMap(_.properties)
+          LazyProperties.concat(project.properties, profileProperties)
         ) // belongs to 1.5 & 1.6
 
       val propertiesMap0 = withFinalProperties(
-        project0.withProperties(parentProperties0 ++ project0.properties)
+        project0.withProperties(LazyProperties.concat(parentProperties0, project0.properties))
       ).properties.toMap
 
       val modules = withProperties0(
         project0.dependencies0 ++
           project0.dependencyManagement0 ++
           profileDependencies.map { case (c, d) => (Variant.Configuration(c), d) },
-        propertiesMap0
+        new PropertiesWrapper(propertiesMap0)
       ).collect {
         case (v, dep) if isImport(v, dep) =>
           dep.moduleVersionConstraint
@@ -1828,7 +1777,8 @@ object Resolution {
     }
 
   @deprecated("Use dependencyManagementRequirements0 instead", "2.1.25")
-  def dependencyManagementRequirements(
+  def
+  dependencyManagementRequirements(
     project: Project
   ): Set[(Module, String)] =
     dependencyManagementRequirements0(project).map {
@@ -1925,16 +1875,18 @@ object Resolution {
 
     // A bit fragile, but seems to work
 
-    val parentProperties0 = parents(project, k => projectCache0.get(k).map(_._2))
-      .toVector
-      .flatMap(_.properties)
+    val parentProperties0 = LazyProperties.concat(
+      parents(project, k => projectCache0.get(k).map(_._2))
+        .toVector
+        .map(_.properties)
+    )
 
     // 1.1 (see above)
-    val approxProperties = parentProperties0.toMap ++ projectProperties(project)
+    val approxProperties = LazyProperties.concat(parentProperties0, projectProperties(project))
 
     val profiles = profiles0(
       project,
-      approxProperties,
+      approxProperties.toMap,
       osInfo,
       jdkVersion0,
       userActivations
@@ -1943,13 +1895,17 @@ object Resolution {
     // 1.2 made from Pom.scala (TODO look at the very details?)
 
     // 1.3 & 1.4 (if only vaguely so)
+    val profileProperties = LazyProperties.concatLayerMaps(
+      profiles.map(_.properties)
+    )
+
     val project0 =
       project.withProperties(
-        project.properties ++ profiles.flatMap(_.properties)
+        LazyProperties.concat(project.properties, profileProperties)
       ) // belongs to 1.5 & 1.6
 
     val propertiesMap0 = withFinalProperties(
-      project0.withProperties(parentProperties0 ++ project0.properties)
+      project0.withProperties(LazyProperties.concat(parentProperties0, project0.properties))
     ).properties.toMap
 
     val (importDeps, standardDeps) = {
@@ -1961,7 +1917,7 @@ object Resolution {
 
       val (importDeps0, standardDeps0) = dependencies0
         .map { dep =>
-          val (v0, dep0) = withProperties(dep, propertiesMap0)
+          val (v0, dep0) = withProperties(dep, new PropertiesWrapper(propertiesMap0))
           if (isImport(v0, dep0))
             (dep0 :: Nil, Nil)
           else
@@ -1985,7 +1941,7 @@ object Resolution {
       )
 
       dependenciesMgmt0.flatMap { dep =>
-        val (conf0, dep0) = withProperties(dep, propertiesMap0)
+        val (conf0, dep0) = withProperties(dep, new PropertiesWrapper(propertiesMap0))
         if (isImport(conf0, dep0))
           dep0 :: Nil
         else
@@ -2057,18 +2013,19 @@ object Resolution {
       depMgmtInputs ++
         retainedImportProjects.map {
           case (p, endorseStrictVersions) =>
-            val overrides = withProperties(p.overrides, projectProperties(p).toMap)
+            val overrides = withProperties(p.overrides, new PropertiesWrapper(projectProperties(p).toMap))
             if (endorseStrictVersions) overrides.enforceGlobalStrictVersions
             else overrides
         } ++
         retainedParentProjects.map { p =>
-          withProperties(p.overrides, staticProjectProperties(p).toMap)
+          withProperties(p.overrides, new PropertiesWrapper(staticProjectProperties(p).toMap))
         }: _*
     )
 
+    val substitution = new LazyProperties.Substitution(propertiesMap0, trim = false)
     project0
-      .withPackagingOpt(project0.packagingOpt.map(_.map(substituteProps(_, propertiesMap0))))
-      .withVersion0(Version0(substituteProps(project0.version0.asString, propertiesMap0)))
+      .withPackagingOpt(project0.packagingOpt.map(_.map(substitution)))
+      .withVersion0(Version0(LazyProperties.substitute(project0.version0.asString, propertiesMap0, trim = false, project0.parsedVersion0)))
       .withDependencies0(
         standardDeps ++
           project0.parent0 // belongs to 1.5 & 1.6
@@ -2083,7 +2040,9 @@ object Resolution {
       .withDependencyManagement0(Nil)
       .withOverrides(depMgmt)
       .withProperties(
-        retainedParentProjects.flatMap(_.properties) ++ project0.properties
+        LazyProperties.concat(
+          retainedParentProjects.map(_.properties) :+ project0.properties
+        )
       )
   }
 
