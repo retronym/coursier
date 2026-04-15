@@ -21,6 +21,12 @@ final case class Organization(value: String) {
 }
 
 object Organization {
+  private[coursier] val instanceCache: ConcurrentMap[Any, Any] =
+    coursier.util.Cache.createCache[Any]()
+
+  def apply(value: String): Organization =
+    coursier.util.Cache.cacheMethod(instanceCache)(new Organization(value)).asInstanceOf[Organization]
+
   implicit val ordering: Ordering[Organization] =
     Ordering[String].on(_.value)
 }
