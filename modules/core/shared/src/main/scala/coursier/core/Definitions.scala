@@ -7,6 +7,7 @@ import coursier.error.VariantError
 import coursier.util.Artifact
 import coursier.version.{Version => Version0}
 import dataclass.data
+
 import scala.util.hashing.MurmurHash3
 
 final case class Organization(value: String) {
