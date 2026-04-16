@@ -1606,22 +1606,21 @@ object Resolution {
   lazy val reverseDependencies: Map[Dependency, Vector[Dependency]] = {
     val (updatedConflicts, updatedDeps, _) = nextDependenciesAndConflicts
 
-    val trDepsSeq =
-      for {
-        dep   <- updatedDeps
-        trDep <- finalDependencies0(dep).toOption.getOrElse(Nil)
-      } yield trDep.clearVersion.clearOverrides -> dep.clearVersion
-    
     val knownDeps = (updatedDeps ++ updatedConflicts)
       .map(_.clearVersion.clearOverrides)
       .toSet
 
+    val trDepsSeq =
+      for {
+        dep   <- updatedDeps
+        trDep <- finalDependencies0(dep).toOption.getOrElse(Nil)
+        trDepCleared = trDep.clearVersion.clearOverrides
+        if (knownDeps.contains(trDepCleared))
+      } yield trDepCleared -> dep.clearVersion
+
     trDepsSeq
-      .groupBy(_._1)
-      .view
-      .mapValues(_.map(_._2).toVector)
-      .filterKeys(knownDeps)
-      .toMap // Eagerly evaluate filterKeys/mapValues
+      .groupMap(_._1)(_._2)
+      .transform((_, deps) => deps.toVector)
   }
 
   /** Returns dependencies from the "next" dependency set, filtering out those that are no more
