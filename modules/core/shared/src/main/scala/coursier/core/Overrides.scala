@@ -133,6 +133,26 @@ object Overrides {
       Impl(map.filter(!_._2.isEmpty).toMap)
     }
 
+  def add(overrides: Overrides): Overrides = {
+    if (overrides.isEmpty) empty0
+    else overrides
+  }
+  def add(overrides1: Overrides, overrides2: Overrides): Overrides = {
+    val overrides1IsEmpty = overrides1.isEmpty
+    val overrides2IsEmpty = overrides2.isEmpty
+    (overrides1IsEmpty, overrides2IsEmpty) match {
+      case (true, true) => empty0
+      case (true, false) => overrides2
+      case (false, true) => overrides1
+      case _ =>
+        (Impl(
+          DependencyManagement.addAll(
+            Map.empty[DependencyManagement.Key, DependencyManagement.Values],
+            overrides1.maps ++ overrides2.maps
+          )
+        ))
+    }
+  }
   def add(overrides: Overrides*): Overrides =
     overrides.filter(_.nonEmpty) match {
       case Seq()     => empty
