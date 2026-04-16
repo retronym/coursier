@@ -58,6 +58,7 @@ object Overrides {
         case _ => false
       }
     }
+
     override lazy val hashCode: Int = map.hashCode()
 
     def get(key: DependencyManagement.Key): Option[DependencyManagement.Values] =

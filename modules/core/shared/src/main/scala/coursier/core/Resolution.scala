@@ -469,10 +469,10 @@ object Resolution {
                 v
             values
         }
-      Overrides.add(
-        rawOverrides,
-        map
-      )
+        Overrides.add(
+          rawOverrides,
+          map
+        )
     }
 
     dependencies.map {
