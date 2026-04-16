@@ -115,9 +115,10 @@ object DependencyManagement {
     }
     private val parsedConfig = LazyProperties.parse(config.value)
     def mapButVersion(f: String => String): Values = {
-      val newConfig = Configuration(LazyProperties.fastApply(config.value, parsedConfig, f))
+      val newConfigValue = LazyProperties.fastApply(config.value, parsedConfig, f)
+      val newConfig = if (newConfigValue eq config.value) config else Configuration(newConfigValue)
       val newExcl   = minimizedExclusions.map(f)
-      if (config != newConfig || minimizedExclusions != newExcl)
+      if ((config != newConfig) || (minimizedExclusions ne newExcl))
         Values(
           config = newConfig,
           versionConstraint = versionConstraint,
@@ -130,9 +131,10 @@ object DependencyManagement {
     }
     private lazy val parsedVersionConstraint = LazyProperties.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
-      val newVersion = LazyProperties.fastApply(versionConstraint.asString, parsedVersionConstraint, f)
-      if (versionConstraint.asString == newVersion) this
-      else withVersionConstraint(VersionConstraint0(newVersion))
+      val origVersionStr = versionConstraint.asString
+      val newVersionStr = LazyProperties.fastApply(origVersionStr, parsedVersionConstraint, f)
+      if (origVersionStr eq newVersionStr) this
+      else withVersionConstraint(VersionConstraint0(newVersionStr))
     }
     val hasProperties =  config.value.contains("$") ||
       versionConstraint.asString.contains("$") ||
