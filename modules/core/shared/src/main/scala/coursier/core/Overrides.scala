@@ -9,12 +9,11 @@ sealed abstract class Overrides extends Product with Serializable {
   def isEmpty: Boolean
   def nonEmpty: Boolean = !isEmpty
 
-  def maps: Seq[DependencyManagement.GenericMap]
+  @deprecated("Use map instead")
+  def maps: Seq[DependencyManagement.GenericMap] = Seq(map)
+  def map: DependencyManagement.GenericMap
   def flatten: DependencyManagement.GenericMap =
-    DependencyManagement.addAll(
-      Map.empty[DependencyManagement.Key, DependencyManagement.Values],
-      maps
-    )
+    map
 
   def filter(f: (DependencyManagement.Key, DependencyManagement.Values) => Boolean): Overrides
   def map(
@@ -47,6 +46,7 @@ object Overrides {
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
     override def equals(obj: Any): Boolean = {
+      if (obj.asInstanceOf[AnyRef] eq this) return true
       obj match {
         case that: Impl =>
           val result = map.equals(that.map)
@@ -67,8 +67,6 @@ object Overrides {
     lazy val isEmpty: Boolean =
       map.forall(_._2.isEmpty)
 
-    def maps: Seq[DependencyManagement.GenericMap] =
-      Seq(map)
     def filter(f: (DependencyManagement.Key, DependencyManagement.Values) => Boolean): Overrides = {
       val updatedMap = map.filter {
         case (k, v) =>
@@ -145,11 +143,15 @@ object Overrides {
       case (true, false) => overrides2
       case (false, true) => overrides1
       case _ =>
-        (Impl(
-          DependencyManagement.addAll(
-            Map.empty[DependencyManagement.Key, DependencyManagement.Values],
-            overrides1.maps ++ overrides2.maps
-          )
+        (Impl({
+          val temp =
+            DependencyManagement.addAll(
+              Map.empty,
+              Seq(overrides1.map, overrides2.map)
+            )
+          if (temp == overrides1.map) overrides1.map else if (temp == overrides2.map) overrides2.map else {
+           temp
+          }}
         ))
     }
   }
@@ -161,7 +163,7 @@ object Overrides {
         (Impl(
           DependencyManagement.addAll(
             Map.empty[DependencyManagement.Key, DependencyManagement.Values],
-            more.flatMap(_.maps)
+            more.map(_.map)
           )
         ))
     }
