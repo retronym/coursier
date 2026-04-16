@@ -141,8 +141,11 @@ object MinimizedExclusions {
       ExcludeSpecific(
         mapSetSkewedToNoOp(byOrg)(_.map(f)),
         mapSetSkewedToNoOp(byModule)(_.map(f)),
-        mapSetSkewedToNoOp(specific) { case (org, module) =>
-          org.map(f) -> module.map(f)
+        mapSetSkewedToNoOp(specific) { case kv @ (org, module) =>
+          val newOrg = org.map(f)
+          val newModule = module.map(f)
+          if (newOrg == org && newModule == module) kv
+          else (org.map(f), module.map(f))
         }
       )
     }
