@@ -228,7 +228,10 @@ object Configuration {
   def apply(value: String): Configuration = {
     // looks weird to this for a value class, but we're basically interning the String
     // without the downsides of String.intern
-    standard.getOrElse(value, new Configuration(value))
+    standard.getOrElse(value, null) match {
+      case null => new Configuration(value)
+      case conf => conf
+    }
   }
   implicit val ordering: Ordering[Configuration] =
     Ordering[String].on(_.value)
