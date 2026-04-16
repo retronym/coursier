@@ -467,37 +467,37 @@ object Resolution {
             if !rawOverrides.contains(k) && l.exists(_._2.versionConstraint.asString.nonEmpty) =>
             k -> l.map(_._2.versionConstraint.asString).filter(_.nonEmpty)
         }
-        val map = dependencyManagement
-          .filter {
-            case (k, v) =>
-              v.config.isEmpty || keepVariant(Variant.Configuration(v.config))
-          }
-          .transform {
-            case (k, v) =>
-              val clearVersion = !forceDepMgmtVersions &&
-                versions
-                  .get(k)
-                  .getOrElse(Nil)
-                  .exists(_ != v.versionConstraint.asString)
-              val newConfig = Configuration.empty
-              val newVersion = if (clearVersion) VersionConstraint0.empty else v.versionConstraint
-              val values =
-                if (v.config != newConfig || v.versionConstraint != newVersion || v.optional)
-                  DependencyManagement.Values(
-                    newConfig,
-                    newVersion,
-                    v.minimizedExclusions,
-                    optional = false
-                  )
-                else
-                  v
-              values
-          }
+      val map = dependencyManagement
+        .filter {
+          case (k, v) =>
+            v.config.isEmpty || keepVariant(Variant.Configuration(v.config))
+        }
+        .transform {
+          case (k, v) =>
+            val clearVersion = !forceDepMgmtVersions &&
+              versions
+                .get(k)
+                .getOrElse(Nil)
+                .exists(_ != v.versionConstraint.asString)
+            val newConfig  = Configuration.empty
+            val newVersion = if (clearVersion) VersionConstraint0.empty else v.versionConstraint
+            val values =
+              if (v.config != newConfig || v.versionConstraint != newVersion || v.optional)
+                DependencyManagement.Values(
+                  newConfig,
+                  newVersion,
+                  v.minimizedExclusions,
+                  optional = false
+                )
+              else
+                v
+            values
+        }
         Overrides.add(
           rawOverrides,
           map
         )
-      }
+    }
     }
 
     dependencies.map {
