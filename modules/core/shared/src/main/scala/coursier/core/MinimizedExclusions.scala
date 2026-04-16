@@ -138,16 +138,16 @@ object MinimizedExclusions {
         if (changed) Set.from(buffer) else s
       }
 
-      ExcludeSpecific(
-        mapSetSkewedToNoOp(byOrg)(_.map(f)),
-        mapSetSkewedToNoOp(byModule)(_.map(f)),
-        mapSetSkewedToNoOp(specific) { case kv @ (org, module) =>
-          val newOrg = org.map(f)
-          val newModule = module.map(f)
-          if (newOrg == org && newModule == module) kv
-          else (org.map(f), module.map(f))
-        }
-      )
+      val newByOrg = mapSetSkewedToNoOp(byOrg)(_.map(f))
+      val newByModule = mapSetSkewedToNoOp(byModule)(_.map(f))
+      val newSpecific = mapSetSkewedToNoOp(specific) { case kv@(org, module) =>
+        val newOrg = org.map(f)
+        val newModule = module.map(f)
+        if (newOrg == org && newModule == module) kv
+        else (org.map(f), module.map(f))
+      }
+      if ((newByOrg eq byOrg) && (newByModule eq byModule) && (newSpecific eq specific)) this
+      else new ExcludeSpecific(newByOrg, newByModule, newSpecific)
     }
 
     override def size(): Int = byOrg.size + byModule.size + specific.size
