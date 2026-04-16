@@ -10,7 +10,7 @@ object DependencyManagement {
   type Map        = scala.collection.immutable.Map[Key, Values]
   type GenericMap = scala.collection.Map[Key, Values]
 
-  @data class Key(
+  @data(cachedHashCode = true) class Key(
     organization: Organization,
     name: ModuleName,
     `type`: Type,
