@@ -110,9 +110,10 @@ object DependencyManagement {
     }
     private lazy val parsedConfig = PropertyExpr.parse(config.value)
     def mapButVersion(f: String => String): Values = {
-      val newConfig = Configuration(parsedConfig.applySubstitution(config.value, f))
+      val newConfigValue = parsedConfig.applySubstitution(config.value, f)
+      val newConfig = if (newConfigValue eq config.value) config else Configuration(newConfigValue)
       val newExcl   = minimizedExclusions.map(f)
-      if (config != newConfig || minimizedExclusions != newExcl)
+      if ((config != newConfig) || (minimizedExclusions ne newExcl))
         Values(
           config = newConfig,
           versionConstraint = versionConstraint,
@@ -126,9 +127,9 @@ object DependencyManagement {
     private lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
       val origVersionStr = versionConstraint.asString
-      val newVersion = parsedVersionConstraint.applySubstitution(origVersionStr, f)
-      if (versionConstraint.asString == newVersion) this
-      else withVersionConstraint(VersionConstraint0(newVersion))
+      val newVersionStr = parsedVersionConstraint.applySubstitution(origVersionStr, f)
+      if (origVersionStr eq newVersionStr) this
+      else withVersionConstraint(VersionConstraint0(newVersionStr))
     }
     val hasProperties =  config.value.contains("$") ||
       versionConstraint.asString.contains("$") ||
