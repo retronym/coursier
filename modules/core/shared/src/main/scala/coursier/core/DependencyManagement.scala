@@ -257,6 +257,7 @@ object DependencyManagement {
       val existing = cache.get(key)
       if (existing != null) {
         hits.increment()
+
         existing
       } else {
         misses.increment()
@@ -290,53 +291,52 @@ object DependencyManagement {
     entries: Seq[GenericMap],
     composeValues: Boolean = true
                   ): Map = {
-    val key = CacheKey(initialMap, entries, composeValues)
-
-    AddAllCache.getOrCompute(key) {
-      addAllUncached(initialMap, entries, composeValues)
-    }
-
-  }
-  def addAllUncached(
-              initialMap: Map,
-              entries: Seq[GenericMap],
-              composeValues: Boolean = true
-            ): Map = {
-
-
-    if (entries.forall(_.isEmpty))
-      initialMap
+    if (entries.forall(_.isEmpty)) initialMap
     else {
+      val key = CacheKey(initialMap, entries, composeValues)
 
-      val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
-
-      builder ++= initialMap
-
-      val it = entries.iterator.flatMap(_.iterator)
-      while (it.hasNext) {
-        val (key, incoming) = it.next()
-
-        // 🔥 reflective fast-path access into builder's internal map state
-        val prev =
-          getOrElseMH
-            .invoke(builder, key.asInstanceOf[AnyRef], null)
-            .asInstanceOf[Values]
-
-        if (prev != null) {
-          if (composeValues) {
-            val composed = prev.orElse(incoming)
-            if (composed != prev) {
-              builder += (key -> composed)
-        }
-          }
-        } else {
-          builder += (key -> incoming)
-        }
+      AddAllCache.getOrCompute(key) {
+        addAllUncached(initialMap, entries, composeValues)
       }
-      builder.result()
     }
 
   }
+
+  def addAllUncached(
+                      initialMap: Map,
+                      entries: Seq[GenericMap],
+                      composeValues: Boolean = true
+                  ): Map = {
+//    assert(initialMap.isEmpty)
+//    println("addAllUncached: " + entries.size + " entries, entries.map(_.size) = " + entries.map(_.size) +  " " + initialMap.size + " initialMap, composeValues=" + composeValues + ")")
+    val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+
+    builder ++= initialMap
+
+    val it = entries.iterator.flatMap(_.iterator)
+    while (it.hasNext) {
+      val (key, incoming) = it.next()
+
+      // 🔥 reflective fast-path access into builder's internal map state
+      val prev =
+        getOrElseMH
+          .invoke(builder, key.asInstanceOf[AnyRef], null)
+          .asInstanceOf[Values]
+
+      if (prev != null) {
+        if (composeValues) {
+          val composed = prev.orElse(incoming)
+          if (composed != prev) {
+            builder += (key -> composed)
+          }
+        }
+      } else {
+        builder += (key -> incoming)
+      }
+    }
+    builder.result()
+  }
+
   def addDependencies(
     map: Map,
     deps: Seq[(Configuration, Dependency)],
