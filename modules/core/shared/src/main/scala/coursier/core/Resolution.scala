@@ -426,19 +426,27 @@ object Resolution {
 
     // See http://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html#Dependency_Management
 
-    lazy val dict = Overrides.add(
-      overridesOpt.getOrElse(Overrides.empty),
-      dependencyManagement
-    )
+    val overridesOrEmpty = overridesOpt.getOrElse(Overrides.empty)
+    def dict(key: DependencyManagement.Key): Option[DependencyManagement.Values] = {
+      overridesOrEmpty.map.getOrElse(key, null) match{
+        case null => dependencyManagement.get(key)
+        case prev =>
+          dependencyManagement.map.getOrElse(key, null) match {
+            case null => Some(prev)
+            case values => Some(prev.orElse(values))
+          }
+      }
+    }
+
+    lazy val versionsGrouped =  dependencies
+      .filter {
+        case (variant, _) =>
+          variant.isEmpty || keepVariant(variant)
+      }
+      .groupBy(_._2.depManagementKey)
 
     lazy val dictForOverridesOpt = rawOverridesOpt.map { rawOverrides =>
-      lazy val versions = dependencies
-        .filter {
-          case (variant, _) =>
-            variant.isEmpty || keepVariant(variant)
-        }
-        .groupBy(_._2.depManagementKey)
-        .collect {
+      val versions = versionsGrouped.collect {
           case (k, l)
               if !rawOverrides.contains(k) && l.exists(_._2.versionConstraint.asString.nonEmpty) =>
             k -> l.map(_._2.versionConstraint.asString).filter(_.nonEmpty)
@@ -480,7 +488,7 @@ object Resolution {
         var variant = variant0
         var dep     = dep0
 
-        for (mgmtValues <- dict.get(dep0.depManagementKey)) {
+        for (mgmtValues <- dict(dep0.depManagementKey)) {
 
           val useManagedVersion = mgmtValues.versionConstraint.asString.nonEmpty && (
             forceDepMgmtVersions ||
