@@ -89,14 +89,18 @@ object MinimizedExclusions {
         case other: ExcludeSpecific =>
           val joinedByOrg    = byOrg ++ other.byOrg
           val joinedByModule = byModule ++ other.byModule
-
-          val joinedSpecific =
-            specific.filter { case e @ (org, module) =>
+          def fullJoin = specific ++ other.specific
+          def filteredJoin = scala.collection.immutable.HashSet.from(
+            specific.iterator.filter { case e @ (org, module) =>
               !other.byOrg(org) && !other.byModule(module)
             } ++
-              other.specific.filter { case e @ (org, module) =>
+              other.specific.iterator.filter { case e @ (org, module) =>
                 !byOrg(org) && !byModule(module)
-              }
+              })
+
+          val joinedSpecific =
+            if (joinedByOrg.isEmpty && joinedByModule.isEmpty) fullJoin
+            else filteredJoin
 
           ExcludeSpecific(joinedByOrg, joinedByModule, joinedSpecific)
       }
