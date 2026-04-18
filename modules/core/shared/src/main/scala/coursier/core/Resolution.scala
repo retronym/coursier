@@ -712,34 +712,49 @@ object Resolution {
     val config0 = actualConfiguration(config, configurations)
     (config0, parentConfigurations(config0, configurations))
   }
-
-  private def staticProjectProperties(project: Project): Seq[(String, String)] =
-    // FIXME The extra properties should only be added for Maven projects, not Ivy ones
-    Seq(
+  private val ProjectProperties: Seq[(String, (Project => String))] = {
+    Vector(
       // some artifacts seem to require these (e.g. org.jmock:jmock-legacy:2.5.1)
       // although I can find no mention of them in any manual / spec
-      "pom.groupId"    -> project.module.organization.value,
-      "pom.artifactId" -> project.module.name.value,
-      "pom.version"    -> project.actualVersion0.repr,
+      "pom.groupId"    -> ((project: Project) => project.module.organization.value),
+      "pom.artifactId" -> ((project: Project) => project.module.name.value),
+      "pom.version"    -> ((project: Project) => project.actualVersion0.repr),
       // Required by some dependencies too (org.apache.directory.shared:shared-ldap:0.9.19 in particular)
-      "groupId"            -> project.module.organization.value,
-      "artifactId"         -> project.module.name.value,
-      "version"            -> project.actualVersion0.asString,
-      "project.groupId"    -> project.module.organization.value,
-      "project.artifactId" -> project.module.name.value,
-      "project.version"    -> project.actualVersion0.asString,
-      "project.packaging"  -> project.packagingOpt.getOrElse(Type.jar).value
-    ) ++ project.parent0.toSeq.flatMap {
-      case (parModule, parVersion) =>
-        Seq(
-          "project.parent.groupId"    -> parModule.organization.value,
-          "project.parent.artifactId" -> parModule.name.value,
-          "project.parent.version"    -> parVersion.asString,
-          "parent.groupId"            -> parModule.organization.value,
-          "parent.artifactId"         -> parModule.name.value,
-          "parent.version"            -> parVersion.asString
-        )
-    }
+      "groupId"            -> ((project: Project) => project.module.organization.value),
+      "artifactId"         -> ((project: Project) => project.module.name.value),
+      "version"            -> ((project: Project) => project.actualVersion0.asString),
+      "project.groupId"    -> ((project: Project) => project.module.organization.value),
+      "project.artifactId" -> ((project: Project) => project.module.name.value),
+      "project.version"    -> ((project: Project) => project.actualVersion0.asString),
+      "project.packaging"  -> ((project: Project) => project.packagingOpt.getOrElse(Type.jar).value)
+    )
+  }
+  private val ProjectWithParentProperties: Seq[(String, (Project => String))] = {
+    ProjectProperties ++ Vector(
+      "project.parent.groupId"    -> ((project: Project) => project.parent0.get._1.organization.value),
+      "project.parent.artifactId" -> ((project: Project) => project.parent0.get._1.name.value),
+      "project.parent.version"    -> ((project: Project) => project.parent0.get._2.asString),
+      "parent.groupId"            -> ((project: Project) => project.parent0.get._1.organization.value),
+      "parent.artifactId"         -> ((project: Project) => project.parent0.get._1.name.value),
+      "parent.version"            -> ((project: Project) => project.parent0.get._2.asString)
+    )
+  }
+  private class SeqView[A, B](delegate: Seq[A], f: (A => B)) extends scala.collection.immutable.AbstractSeq[B] {
+    override def apply(i: Int): B = f(delegate(i))
+
+    override def length: Int = delegate.length
+
+    override def isEmpty: Boolean = delegate.isEmpty
+
+    override def iterator: Iterator[B] = delegate.iterator.map(f)
+  }
+
+  private def staticProjectProperties(project: Project): Seq[(String, String)] = {
+    val templateSeq =
+      if (project.parent0.isDefined) ProjectWithParentProperties
+      else  ProjectProperties
+    new SeqView[(String, (Project => String)), (String, String)](templateSeq, {case (k, v) => (k, v(project))})
+  }
 
   def projectProperties(project: Project): Seq[(String, String)] =
       LazyProperties.concat(project.properties, staticProjectProperties(project))
