@@ -310,29 +310,37 @@ object DependencyManagement {
 //    assert(initialMap.isEmpty)
 //    println("addAllUncached: " + entries.size + " entries, entries.map(_.size) = " + entries.map(_.size) +  " " + initialMap.size + " initialMap, composeValues=" + composeValues + ")")
     val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+    val allEntries = if (initialMap.isEmpty) entries.toList else initialMap :: entries.toList
+    allEntries match {
+      case head :: tail =>
+        builder ++= head
 
-    builder ++= initialMap
+        val it = tail.iterator
+        while (it.hasNext) {
+          it.next().foreachEntry {
+            case (key, incoming) =>
 
-    val it = entries.iterator.flatMap(_.iterator)
-    while (it.hasNext) {
-      val (key, incoming) = it.next()
+              // 🔥 reflective fast-path access into builder's internal map state
+              val prev =
+                getOrElseMH
+                  .invoke(builder, key.asInstanceOf[AnyRef], null)
+                  .asInstanceOf[Values]
 
-      // 🔥 reflective fast-path access into builder's internal map state
-      val prev =
-        getOrElseMH
-          .invoke(builder, key.asInstanceOf[AnyRef], null)
-          .asInstanceOf[Values]
-
-      if (prev != null) {
-        if (composeValues) {
-          val composed = prev.orElse(incoming)
-          if (composed != prev) {
-            builder += (key -> composed)
+              if (prev != null) {
+                if (composeValues) {
+                  val composed = prev.orElse(incoming)
+                  if (composed != prev) {
+                    builder += (key -> composed)
+                  }
+                }
+              } else {
+                builder += (key -> incoming)
+              }
           }
         }
-      } else {
-        builder += (key -> incoming)
-      }
+
+      case Nil =>
+
     }
     builder.result()
   }
