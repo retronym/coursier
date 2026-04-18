@@ -19,33 +19,54 @@ object Orders {
   ): Map[Configuration, Set[Configuration]] =
     allConfigurations0(configurations)
 
-  private[core] def allConfigurations0(
-    configurations: Map[Configuration, Seq[Configuration]]
-  ): Map[Configuration, Set[Configuration]] = {
-    def allParents(config: Configuration): Set[Configuration] = {
-      def helper(configs: Set[Configuration], acc: Set[Configuration]): Set[Configuration] =
-        if (configs.isEmpty)
-          acc
-        else if (configs.exists(acc))
-          helper(configs -- acc, acc)
-        else if (configs.exists(!configurations.contains(_))) {
-          val (remaining, notFound) = configs.partition(configurations.contains)
-          helper(remaining, acc ++ notFound)
-        }
-        else {
-          val extraConfigs = configs.flatMap(configurations)
-          helper(extraConfigs, acc ++ configs)
-        }
 
-      helper(Set(config), Set.empty)
+  private[core] def allConfigurations0(
+                                        configurations: Map[Configuration, Seq[Configuration]]
+                                      ): Map[Configuration, Set[Configuration]] = {
+    import scala.collection.mutable
+    import scala.collection.immutable
+
+    def allParents(config: Configuration): Set[Configuration] = {
+
+      var visited  = immutable.ListSet.empty[Configuration]
+      val frontier = mutable.LinkedHashSet.empty[Configuration]
+
+      frontier += config
+
+      while (frontier.nonEmpty) {
+
+        // take one element (no allocation)
+        val current = frontier.head
+        frontier -= current
+
+        // skip if already visited
+        if (!visited.contains(current)) {
+          visited += current
+
+          configurations.get(current) match {
+            case Some(parents) =>
+              // inline expansion (replaces flatMap)
+              var i = 0
+              while (i < parents.length) {
+                val p = parents(i)
+                if (!visited.contains(p))
+                  frontier += p
+                i += 1
+              }
+
+            case None =>
+            // unknown config → leaf (already added to visited)
+          }
+        }
+      }
+
+      visited
+
     }
 
-    configurations
-      .keys
-      .toList
-      .map(config => config -> allParents(config))
-      .toMap
+    configurations.transform((k, _) => allParents(k))
   }
+
 
   /** Configurations partial order based on configuration mapping `configurations`.
     *
