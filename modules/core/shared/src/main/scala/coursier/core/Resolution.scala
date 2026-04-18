@@ -171,35 +171,33 @@ object Resolution {
         val b = new java.util.HashMap[DependencyManagement.Key, DependencyManagement.Values]()
         var changed = false
 
-        val it = map.iterator
-        while (it.hasNext) {
-          val kv = it.next()
-          if (kv._1.hasProperties) {
-            val (k0, v0) = withProperties(kv, properties)
+        map.foreachEntry {
+          case kv @ (k, v) =>
+            if (kv._1.hasProperties) {
+              val (k0, v0) = withProperties(kv, properties)
 
-            if (!changed && (k0 != kv._1 || v0 != kv._2))
-              changed = true
+              if (!changed && (k0 != kv._1 || v0 != kv._2))
+                changed = true
 
-            val existing = b.get(k0)
-            if (existing == null) {
-              b.put(k0, v0)
+              val existing = b.get(k0)
+              if (existing == null) {
+                b.put(k0, v0)
+              } else {
+                b.put(k0, existing.orElse(v0))
+              }
             } else {
-              b.put(k0, existing.orElse(v0))
+              val v0 = withProperties(kv._2, properties)
+
+              if (!changed && (v0 != kv._2))
+                changed = true
+
+              val existing = b.get(kv._1)
+              if (existing == null) {
+                b.put(kv._1, v0)
+              } else {
+                b.put(kv._1, existing.orElse(v0))
+              }
             }
-          } else {
-            val v0 = withProperties(kv._2, properties)
-
-            if (!changed && (v0 != kv._2))
-              changed = true
-
-            val existing = b.get(kv._1)
-            if (existing == null) {
-              b.put(kv._1, v0)
-            } else {
-              b.put(kv._1, existing.orElse(v0))
-            }
-          }
-
         }
 
         if (changed) {
