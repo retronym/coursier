@@ -40,25 +40,9 @@ sealed abstract class Overrides extends Product with Serializable {
 }
 
 object Overrides {
-  private[coursier] val instanceCache: ConcurrentMap[Overrides, Overrides] =
-    coursier.util.Cache.createCache()
   private val Found = new ControlThrowable() {}
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
-    override def equals(obj: Any): Boolean = {
-      if (obj.asInstanceOf[AnyRef] eq this) return true
-      obj match {
-        case that: Impl =>
-          val result = map.equals(that.map)
-          if (!map.isEmpty) {
-//            println(("Impl.equals", map.getClass, that.map.getClass, result))
-//            println(("Impl.equals", map.keys.toSeq.map(_.repr)))
-          }
-          result
-        case _ => false
-      }
-    }
-
     override lazy val hashCode: Int = map.hashCode()
 
     def get(key: DependencyManagement.Key): Option[DependencyManagement.Values] =

@@ -12,7 +12,6 @@ import scala.collection.compat.immutable.LazyList
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 import java.util.concurrent.ConcurrentMap
-import coursier.core.Overrides.instanceCache
 
 object Resolution {
 
