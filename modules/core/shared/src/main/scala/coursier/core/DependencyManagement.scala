@@ -293,11 +293,11 @@ object DependencyManagement {
                   ): Map = {
     if (entries.forall(_.isEmpty)) initialMap
     else {
-//      val key = CacheKey(initialMap, entries, composeValues)
+      val key = CacheKey(initialMap, entries, composeValues)
 
-//      AddAllCache.getOrCompute(key) {
+      AddAllCache.getOrCompute(key) {
         addAllUncached(initialMap, entries, composeValues)
-//      }
+      }
     }
 
   }
