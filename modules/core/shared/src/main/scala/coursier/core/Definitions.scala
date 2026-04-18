@@ -223,6 +223,7 @@ final case class Configuration(value: String) {
     if (newValue eq value) this
     else Configuration(newValue)
   }
+  override lazy val hashCode = MurmurHash3.productHash(this)
 }
 
 object Configuration {
