@@ -231,31 +231,39 @@ object DependencyManagement {
   def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): AddAllResult = {
     var globalCount = 0
     val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+    val allEntries = if (initialMap.isEmpty) entries.toList else initialMap :: entries.toList
+    allEntries match {
+      case head :: tail =>
+        builder ++= head
 
-    builder ++= initialMap
+        val it = tail.iterator
+        while (it.hasNext) {
+          it.next().foreachEntry {
+            case (key, incoming) =>
 
-    val it = entries.iterator.flatMap(_.iterator)
-    while (it.hasNext) {
-      val (key, incoming) = it.next()
+              // 🔥 reflective fast-path access into builder's internal map state
+              val prev =
+                getOrElseMH
+                  .invoke(builder, key.asInstanceOf[AnyRef], null)
+                  .asInstanceOf[Values]
 
-      // 🔥 reflective fast-path access into builder's internal map state
-      val prev =
-        getOrElseMH
-          .invoke(builder, key.asInstanceOf[AnyRef], null)
-          .asInstanceOf[Values]
-
-      if (prev != null) {
-        if (composeValues) {
-          val composed = prev.orElse(incoming)
-          if (composed != prev) {
+              if (prev != null) {
+                if (composeValues) {
+                  val composed = prev.orElse(incoming)
+                  if (composed != prev) {
                     if (composed.global) globalCount += 1
-            builder += (key -> composed)
+                    builder += (key -> composed)
+                  }
+                }
+              } else {
+                if (incoming.global) globalCount += 1
+                builder += (key -> incoming)
+              }
           }
         }
-      } else {
-                if (incoming.global) globalCount += 1
-        builder += (key -> incoming)
-      }
+
+      case Nil =>
+
     }
     AddAllResult(builder.result(), globalCount)
   }
