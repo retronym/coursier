@@ -1,6 +1,7 @@
 package coursier.core
 
 import java.util.concurrent.ConcurrentMap
+import scala.util.control.compat.ControlThrowable
 
 sealed abstract class Overrides extends Product with Serializable {
   def get(key: DependencyManagement.Key): Option[DependencyManagement.Values]
@@ -42,6 +43,7 @@ sealed abstract class Overrides extends Product with Serializable {
 object Overrides {
   private[coursier] val instanceCache: ConcurrentMap[Overrides, Overrides] =
     coursier.util.Cache.createCache()
+  private val Found = new ControlThrowable() {}
 
   private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
     override def equals(obj: Any): Boolean = {
@@ -103,8 +105,15 @@ object Overrides {
           map((k, v) => (k, f(k, v)))
       }
     }
-    lazy val hasProperties = map.exists { t =>
-      t._1.hasProperties || t._2.hasProperties
+    lazy val hasProperties = {
+      try {
+        map.foreachEntry((k, v) => {
+          if (k.hasProperties || v.hasProperties) throw Found
+        })
+        false
+      } catch {
+        case Found => true
+      }
     }
     def mapMap(
       f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]
