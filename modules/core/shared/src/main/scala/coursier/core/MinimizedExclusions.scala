@@ -65,7 +65,8 @@ object MinimizedExclusions {
 
     override def size(): Int                              = 1
     override def subsetOf(other: ExclusionData): Boolean  = other == ExcludeAll
-    override def toSet(): Set[(Organization, ModuleName)] = Set((allOrganizations, allNames))
+    private val _toSet: Set[(Organization, ModuleName)] = Set((allOrganizations, allNames))
+    override def toSet(): Set[(Organization, ModuleName)] = _toSet
 
     def hasProperties: Boolean = false
   }
@@ -162,8 +163,15 @@ object MinimizedExclusions {
           specific.subsetOf(other.specific)
       }
 
-    override def toSet(): Set[(Organization, ModuleName)] =
-      byOrg.map(_ -> allNames) ++ byModule.map(allOrganizations -> _) ++ specific
+    private lazy val _toSet = {
+      val b = Set.newBuilder[(Organization, ModuleName)]
+      byOrg.foreach(org => b.addOne((org, allNames)))
+      byModule.foreach(name => b.addOne((allOrganizations, name)))
+      b.addAll(specific)
+      b.result()
+    }
+
+    override def toSet(): Set[(Organization, ModuleName)] = _toSet
 
     lazy val hasProperties: Boolean =
       byOrg.exists(_.value.contains("$")) ||
