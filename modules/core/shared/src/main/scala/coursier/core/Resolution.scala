@@ -1628,14 +1628,14 @@ object Resolution {
     val (updatedConflicts, updatedDeps, _) = nextDependenciesAndConflicts
 
     val knownDeps = (updatedDeps ++ updatedConflicts)
-      .map(_.clearVersion.clearOverrides)
+      .map(_.clearVersion.clearOverrides.clearExclusions)
       .toSet
 
     val trDepsSeq =
       for {
         dep   <- updatedDeps
         trDep <- finalDependencies0(dep).toOption.getOrElse(Nil)
-        trDepCleared = trDep.clearVersion.clearOverrides
+        trDepCleared = trDep.clearVersion.clearOverrides.clearExclusions
         if (knownDeps.contains(trDepCleared))
       } yield trDepCleared -> dep.clearVersion
 
@@ -1644,13 +1644,14 @@ object Resolution {
       .transform((_, deps) => deps.toVector)
   }
 
+
   /** Returns dependencies from the "next" dependency set, filtering out those that are no more
-    * required.
-    *
-    * The versions of all the dependencies returned are erased (emptied).
-    */
+   * required.
+   *
+   * The versions of all the dependencies returned are erased (emptied).
+   */
   lazy val remainingDependencies: Set[Dependency] = {
-    val rootDependencies0 = processedRootDependencies.map(_.clearVersion.clearOverrides).toSet
+    val rootDependencies0 = processedRootDependencies.map(_.clearVersion.clearOverrides.clearExclusions).toSet
 
     @tailrec
     def helper(
@@ -1673,12 +1674,12 @@ object Resolution {
             .iterator
             .toMap
         )
-    }
+          }
 
     val filteredReverseDependencies = helper(reverseDependencies)
 
     rootDependencies0 ++ filteredReverseDependencies.keys
-  }
+      }
 
   /** The final next dependency set, stripped of no more required ones.
     */
@@ -1686,7 +1687,7 @@ object Resolution {
     val remainingDependencies0 = remainingDependencies
 
     nextDependenciesAndConflicts._2
-      .filter(dep => remainingDependencies0(dep.clearVersion.clearOverrides))
+      .filter(dep => remainingDependencies0(dep.clearVersion.clearOverrides.clearExclusions))
       .toSet
   }
 
