@@ -183,34 +183,39 @@ object MinimizedExclusions {
     if (exclusions.isEmpty)
       zero
     else {
-
       val excludeByOrg0  = Set.newBuilder[Organization]
       val excludeByName0 = Set.newBuilder[ModuleName]
-      val remaining0     = Set.newBuilder[(Organization, ModuleName)]
+      var remaining0     = exclusions
 
       val it    = exclusions.iterator
       var isOne = false
       while (it.hasNext && !isOne) {
         val excl = it.next()
-        if (excl._1 == allOrganizations)
+        if (excl._1 == allOrganizations) {
           if (excl._2 == allNames)
             isOne = true
           else
             excludeByName0 += excl._2
-        else if (excl._2 == allNames)
+          remaining0 -= excl
+        } else if (excl._2 == allNames) {
           excludeByOrg0 += excl._1
-        else
-          remaining0 += excl
+          remaining0 -= excl
+        }
       }
 
       if (isOne)
         one
-      else
+      else {
+
+        val byOrg = excludeByOrg0.result()
+        val byName = excludeByName0.result()
+        val specific = remaining0
         MinimizedExclusions(ExcludeSpecific(
-          excludeByOrg0.result(),
-          excludeByName0.result(),
-          remaining0.result()
+          byOrg,
+          byName,
+          specific
         ))
+      }
     }
 }
 
