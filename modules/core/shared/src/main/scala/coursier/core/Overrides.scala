@@ -36,21 +36,19 @@ sealed abstract class Overrides extends Product with Serializable {
   ): Overrides
 
   def hasProperties: Boolean
+  def globalCount: Option[Int]
 
   final lazy val enforceGlobalStrictVersions: Overrides =
     map { (k, v) =>
       (k, v.withGlobal(true))
-    }
-  final lazy val global: Overrides =
-    filter { (_, v) =>
-      v.global
     }
 }
 
 object Overrides {
   private val Found = new ControlThrowable() {}
 
-  private final case class Impl(map: DependencyManagement.GenericMap) extends Overrides {
+  private final case class Impl(map: DependencyManagement.GenericMap,
+                                override val globalCount: Option[Int] = None) extends Overrides {
 
     override lazy val hashCode: Int = map.hashCode()
 
@@ -76,23 +74,26 @@ object Overrides {
       ) => (DependencyManagement.Key, DependencyManagement.Values)
     ): Overrides = {
       var changed = false
+      var globalCount = 0
       val updatedMap = map.map {
         case kv @ (k, v) =>
           // FIXME Key collisions after applying f?
           val updated = f(k, v)
           if (!changed && kv != updated)
             changed = true
+          if (updated._2.global) globalCount += 1
           updated
       }
-      if (changed) Overrides(updatedMap)
+      if (changed) Overrides.Impl(updatedMap, Some(globalCount))
       else this
     }
     def transform(f: (DependencyManagement.Key, DependencyManagement.Values) => DependencyManagement.Values): Overrides = {
       map match {
         case immMap: scala.collection.immutable.Map[DependencyManagement.Key, DependencyManagement.Values] =>
-          val transformed = immMap.transform(f)
+          var globalCount = 0
+          val transformed = immMap.transform((k, v) => { val newV = f(k, v); if (newV.global) globalCount += 1; newV })
           if (transformed eq map) this
-          else Overrides(transformed)
+          else Overrides.Impl(transformed, Some(globalCount))
         case _ =>
           map((k, v) => (k, f(k, v)))
       }
@@ -123,7 +124,7 @@ object Overrides {
         .getOrElse(this)
   }
 
-  private val empty0 = Impl(Map.empty)
+  private val empty0 = Impl(Map.empty, Some(0))
   def empty: Overrides =
     empty0
 
@@ -146,16 +147,18 @@ object Overrides {
       case (true, false) => overrides2
       case (false, true) => overrides1
       case _ =>
-        (Impl({
-          val temp =
-            DependencyManagement.addAll(
-              Map.empty,
-              Seq(overrides1.map, overrides2.map)
-            )
-          if (temp == overrides1.map) overrides1.map else if (temp == overrides2.map) overrides2.map else {
-           temp
-          }}
-        ))
+        val temp =
+          DependencyManagement.addAll(
+            Map.empty,
+            Seq(overrides1.map, overrides2.map)
+          )
+        if (temp.map == overrides1.map)
+          overrides1
+        else if (temp.map == overrides2.map)
+          overrides2
+        else {
+          Overrides.Impl(temp.map, Some(temp.globalCount))
+        }
     }
   }
   def add(overrides: Overrides*): Overrides =
@@ -163,11 +166,10 @@ object Overrides {
       case Seq()     => empty
       case Seq(elem) => elem
       case more =>
-        (Impl(
-          DependencyManagement.addAll(
-            Map.empty[DependencyManagement.Key, DependencyManagement.Values],
-            more.map(_.map)
-          )
-        ))
+        val addAllResult = DependencyManagement.addAll(
+          Map.empty[DependencyManagement.Key, DependencyManagement.Values],
+          more.map(_.map)
+        )
+        Overrides.Impl(addAllResult.map, Some(addAllResult.globalCount))
     }
 }

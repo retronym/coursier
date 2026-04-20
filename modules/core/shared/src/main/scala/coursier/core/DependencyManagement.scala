@@ -226,7 +226,10 @@ object DependencyManagement {
       )
     )
 
-  def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): Map = {
+  case class AddAllResult(map: Map, globalCount: Int)
+
+  def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): AddAllResult = {
+    var globalCount = 0
     val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
 
     builder ++= initialMap
@@ -245,14 +248,16 @@ object DependencyManagement {
         if (composeValues) {
           val composed = prev.orElse(incoming)
           if (composed != prev) {
+                    if (composed.global) globalCount += 1
             builder += (key -> composed)
           }
         }
       } else {
+                if (incoming.global) globalCount += 1
         builder += (key -> incoming)
       }
     }
-    builder.result()
+    AddAllResult(builder.result(), globalCount)
   }
 
   def addDependencies(

@@ -338,19 +338,20 @@ object Resolution {
         case Some(f) => f(mod)
         case _       => ConstraintReconciliation.Default
       }
-    val constraints = dependencies
-      .iterator
-      .flatMap(_.overridesMap.global.flatten.iterator)
-      .map {
-        case (k, v) =>
-          v.fakeDependency(k)
+    // Performance sensitive, hence the use of a mutable map
+    val constraints = mutable.HashMap[Module, mutable.ArrayBuffer[VersionConstraint0]]()
+    for { dep <- dependencies} {
+      if (dep.overridesMap.globalCount.exists(_ > 0)) {
+        dep.overridesMap.map.foreachEntry {
+          (k, v) =>
+            if (v.global) {
+              val fakeDep = v.fakeDependency(k)
+              val b = constraints.getOrElseUpdate(fakeDep.module, mutable.ArrayBuffer[VersionConstraint0]())
+              b += fakeDep.versionConstraint
+            }
+        }
       }
-      .toSeq
-      .groupBy(_.module)
-      .map {
-        case (mod, list) =>
-          (mod, list.map(_.versionConstraint))
-      }
+    }
     val dependencies0 = dependencies.toVector
     val mergedByModVer = dependencies0
       .groupBy(dep => dep.module)
