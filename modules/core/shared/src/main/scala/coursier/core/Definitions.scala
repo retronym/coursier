@@ -62,11 +62,6 @@ object ModuleName {
   assertValid(organization.value, "organization")
   assertValid(name.value, "module name")
 
-  def trim: Module = copy(
-    organization.map(_.trim),
-    name.map(_.trim)
-  )
-
   private def attributesStr = attributes.toSeq
     .sortBy { case (k, _) => k }
     .map { case (k, v) => s"$k=$v" }

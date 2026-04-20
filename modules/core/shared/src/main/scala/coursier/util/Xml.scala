@@ -47,10 +47,10 @@ object Xml {
       else None
   }
 
-  def text(elem: Node, label: String, description: String): Either[String, String] =
+  def text(elem: Node, label: String, description: String, trim: Boolean = false): Either[String, String] =
     elem.children
       .find(_.label == label)
-      .flatMap(_.children.collectFirst { case Text(t) => t })
+      .flatMap(_.children.collectFirst { case Text(t) => if (trim) t.trim else t })
       .toRight(s"$description not found")
 
   def parseDateTime(s: String): Option[Versions.DateTime] =
