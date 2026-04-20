@@ -333,14 +333,14 @@ object Resolution {
       }
     }
     val dependencies0 = dependencies
-    val mergedByModVer = dependencies0
+    val mergedByModVer = dependencies0.toVector
       .groupBy(dep => dep.module)
-      .map { case (module, deps) =>
+      .transform { case (module, deps) =>
         val forcedVersionOpt = forceVersions.get(module)
           .orElse(forceVersions.get(module.withOrganization(Organization("*"))))
           .orElse(forceVersions.get(module.withName(ModuleName("*"))))
 
-        module -> {
+        {
           forcedVersionOpt match {
             case None =>
               val fromConstraints = constraints.getOrElse(module, Nil)
@@ -1548,7 +1548,7 @@ object Resolution {
   lazy val processedRootDependencies =
     if (hasAllBoms) {
       val rootDependenciesWithDefaultConfig =
-        rootDependencies.map(withDefaultConfig(_, defaultConfiguration))
+        rootDependencies.toVector.map(withDefaultConfig(_, defaultConfiguration))
       val rootDependencies0 =
         if (bomDepMgmtOverrides.isEmpty) rootDependenciesWithDefaultConfig
         else
@@ -1583,7 +1583,7 @@ object Resolution {
       }
     }
     else
-      Nil
+      Vector.empty
 
   /** The "next" dependency set, made of the current dependencies and their transitive dependencies,
     * trying to solve version conflicts. Transitive dependencies are calculated with the current
