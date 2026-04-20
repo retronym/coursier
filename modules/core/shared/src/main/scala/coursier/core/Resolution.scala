@@ -1605,12 +1605,12 @@ object Resolution {
     )
 
   lazy val retainedVersions: Map[Module, Version0] =
-    nextDependenciesAndConflicts._3.map {
+    nextDependenciesAndConflicts._3.transform {
       case k @ (m, v) =>
         projectCache0.get(k)
           .map {
             case (_, proj) =>
-              m -> proj.actualVersion0
+              proj.actualVersion0
           }
           .getOrElse {
             sys.error(s"Cannot find $m:${v.asString} in projectCache")
@@ -1620,7 +1620,7 @@ object Resolution {
   // same as retainedVersions, but doesn't throw if a module isn't found
   // useful for failed resolutions
   private[coursier] lazy val retainedVersionsLoose: Map[Module, Version0] =
-    nextDependenciesAndConflicts._3.map {
+    nextDependenciesAndConflicts._3.transform {
       case k @ (m, v) =>
         val finalVersion = projectCache0.get(k)
           .map {
@@ -1630,7 +1630,7 @@ object Resolution {
           .getOrElse {
             Version0(v.generateString)
           }
-        m -> finalVersion
+        finalVersion
     }
 
   def reconciledVersions: Map[Module, VersionConstraint0] =
