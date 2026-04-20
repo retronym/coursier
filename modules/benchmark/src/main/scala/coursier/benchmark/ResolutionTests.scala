@@ -14,12 +14,14 @@ class ResolutionTests {
 
   @Benchmark
   def sparkSql(state: TestState): Unit = {
+    coursier.util.Cache.clearAll() // Don't cheat by reusing computations from prior iterations
     val t = Resolve.runProcess(state.initialSparkSqlRes, state.fetch)
     Await.result(t.future()(state.ec), Duration.Inf)
   }
 
   @Benchmark
   def coursierCli(state: TestState): Unit = {
+    coursier.util.Cache.clearAll()
     val t = Resolve.runProcess(state.initialCoursierCliRes, state.fetch)
     Await.result(t.future()(state.ec), Duration.Inf)
   }
