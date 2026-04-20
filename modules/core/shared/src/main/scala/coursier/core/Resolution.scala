@@ -332,7 +332,7 @@ object Resolution {
         }
       }
     }
-    val dependencies0 = dependencies.toVector
+    val dependencies0 = dependencies
     val mergedByModVer = dependencies0
       .groupBy(dep => dep.module)
       .map { case (module, deps) =>
@@ -369,9 +369,8 @@ object Resolution {
     val merged =
       if (preserveOrder)
         dependencies0
-          .map(_.module)
-          .distinct
-          .map(mergedByModVer(_))
+          .distinctBy(_.module)
+          .map(x => mergedByModVer(x.module))
       else
         mergedByModVer
           .values
