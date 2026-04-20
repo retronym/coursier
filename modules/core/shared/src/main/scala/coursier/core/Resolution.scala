@@ -2384,7 +2384,7 @@ object Resolution {
   def dependenciesWithRetainedVersions: Set[Dependency] =
     dependencies.map { dep =>
       retainedVersions.get(dep.module).fold(dep) { v =>
-        dep.withVersionConstraint(VersionConstraint0.fromVersion(v))
+        dep.withVersionConstraintConserve(VersionConstraint0.fromVersion(v))
       }
     }
 
