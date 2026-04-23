@@ -264,7 +264,7 @@ object Resolution {
     if (variant.asConfiguration.exists(_.parsedValue.hasProperties) || dep.hasProperties) {
 
       val dep0 = dep
-        .withVersionConstraint( {
+        .withVersionConstraintConserve( {
           if (dep.parsedVersionConstraint.hasProperties) {
             val vc1 = VersionConstraint0(dep.parsedVersionConstraint.applySubstitution(dep.versionConstraint.asString, properties.substituteTrimmedProps))
             coursier.util.Cache.cacheMethod(versionConstraintInstanceCache)(vc1)
@@ -353,7 +353,7 @@ object Resolution {
 
                 (
                   versionOpt match {
-                    case Some(version) => Right(deps.map(_.withVersionConstraint(version)))
+                    case Some(version) => Right(deps.map(_.withVersionConstraintConserve(version)))
                     case None          => Left(deps)
                   },
                   versionOpt
@@ -361,7 +361,7 @@ object Resolution {
               }
 
             case Some(forcedVersion) =>
-              (Right(deps.map(_.withVersionConstraint(forcedVersion))), Some(forcedVersion))
+              (Right(deps.map(_.withVersionConstraintConserve(forcedVersion))), Some(forcedVersion))
           }
         }
       }
@@ -511,7 +511,7 @@ object Resolution {
             overridesOpt.exists(_.contains(dep0.depManagementKey))
           )
           if (useManagedVersion)
-            dep = dep.withVersionConstraint(mgmtValues.versionConstraint)
+            dep = dep.withVersionConstraintConserve(mgmtValues.versionConstraint)
 
           if (mgmtValues.minimizedExclusions.nonEmpty) {
             val newExcl = dep.minimizedExclusions.join(mgmtValues.minimizedExclusions)
