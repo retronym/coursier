@@ -349,7 +349,7 @@ object Resolution {
               else {
                 val versions0  = deps.map(_.versionConstraint) ++ fromConstraints
                 val reconciler = reconcilerByMod(module)
-                val versionOpt = reconciler.reconcile(versions0)
+                val versionOpt = reconciler.reconcile(versions0.distinct)
 
                 (
                   versionOpt match {
