@@ -210,27 +210,12 @@ object DependencyManagement {
       b.result().toMap
     }
 
-  import java.lang.invoke.{MethodHandles, MethodType}
-  import scala.collection.mutable
-
-  private val lookup = MethodHandles.lookup()
-
-  private final val getOrElseMH =
-    lookup.findVirtual(
-      Class.forName("scala.collection.immutable.HashMapBuilder"),
-      "getOrElse",
-      MethodType.methodType(
-        classOf[java.lang.Object],
-        classOf[java.lang.Object],
-        classOf[java.lang.Object]
-      )
-    )
-
   case class AddAllResult(map: Map, globalCount: Int)
 
   def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): AddAllResult = {
     var globalCount = 0
-    val builder = scala.collection.immutable.HashMap.newBuilder[Key, Values]
+    val builder: coursier.util.HashMapBuilder[Key, Values] = coursier.util.HashMapBuilderFactory.apply
+
     val allEntries = if (initialMap.isEmpty) entries.toList else initialMap :: entries.toList
     allEntries match {
       case head :: tail =>
@@ -241,11 +226,7 @@ object DependencyManagement {
           it.next().foreachEntry {
             case (key, incoming) =>
 
-              // 🔥 reflective fast-path access into builder's internal map state
-              val prev =
-                getOrElseMH
-                  .invoke(builder, key.asInstanceOf[AnyRef], null)
-                  .asInstanceOf[Values]
+              val prev = builder.getOrNull(key)
 
               if (prev != null) {
                 if (composeValues) {
