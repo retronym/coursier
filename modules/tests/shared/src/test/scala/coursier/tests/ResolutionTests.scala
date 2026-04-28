@@ -899,7 +899,24 @@ object ResolutionTests extends TestSuite {
         assert(res == "prefix-$${missing")
       }
 
-      test("duplicateProjectPropertiesReachFixpoint") {
+      test("duplicateProjectPropertiesPreferenceLastOne") {
+        val props = Resolution.projectProperties(
+          Project(
+            mod"acme:dupe-props",
+            "1.0",
+            properties = Seq(
+              "a" -> "1",
+              "a" -> "2",
+              "b" -> "${a}"
+            )
+          )
+        )
+
+        assert(props.take(3) == List("a" -> "1", "a" -> "2", "b" -> "${a}"))
+        assert(props.toMap.apply("a") == "2")
+      }
+
+      test("duplicateProjectPropertiesCycleReachFixpoint") {
         val props = Resolution.projectProperties(
           Project(
             mod"acme:dupe-props",
@@ -911,9 +928,8 @@ object ResolutionTests extends TestSuite {
           )
         )
 
-        assert(props.getClass.getName.contains("LazyProperties"))
-        assert(props.take(2) == Seq("a" -> "1", "a" -> "12"))
-        assert(props.toMap.apply("a") == "12")
+        assert(props.take(2) == Seq("a" -> "1", "a" -> "${a}2"))
+        assert(props.toMap.apply("a") == "${a}2")
       }
     }
 

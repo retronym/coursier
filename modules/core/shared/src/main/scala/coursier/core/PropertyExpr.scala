@@ -10,7 +10,7 @@ sealed abstract class PropertyExpr {
     case PropertyReference(_) => true
     case Composite(_) => true
   }
-  final def substitute(s: String, lookup: PropertyValueLookup, trim: Boolean): String = {
+  final def substitute(s: String, lookup: PropertyValueLookup, trim: Boolean): String = try {
     this match {
       case PropertyLiteral(value) =>
         value
@@ -28,6 +28,9 @@ sealed abstract class PropertyExpr {
       case Composite(parts) =>
         PropertyExpr.renderSubstitutions(s, parts, lookup, trim)
     }
+  } catch {
+    case _: PropertyExpr.CyclicPropertyException =>
+      s
   }
   final def applySubstitution(value: String, f: (String => String)): String = f match {
     case s: Substitution => s.applyWithPropertyExpr(value, this)
@@ -74,7 +77,7 @@ object PropertyExpr {
     case PropertyReference(name) =>
       // Skip cycle tracking below depth CycleTrackingDepthStart: no allocation, no list scan
       val isCycle = depth >= CycleTrackingDepthStart && seen.contains(name)
-      val resolvedExpr = if (isCycle) null else lookup.lookupOrNull(name)
+      val resolvedExpr = if (isCycle) throw new CyclicPropertyException else lookup.lookupOrNull(name)
       if (resolvedExpr == null) {
         s"$${$name}"
       } else {
@@ -87,6 +90,7 @@ object PropertyExpr {
         if (trim) result.trim else result
       }
   }
+  private class CyclicPropertyException extends RuntimeException("Cyclic property reference detected")
 
   private def renderSubstitutions(
                                raw: String,
