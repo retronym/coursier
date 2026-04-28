@@ -156,8 +156,8 @@ object Resolution {
         }
       }
     }
-    val substituteTrimmedProps = new PropertyExpr.Substitution(lookup, true)
-    val substituteProps0 = new PropertyExpr.Substitution(lookup, false)
+    val substitutionTrimmed = new PropertyExpr.Substitution(lookup, true)
+    val substitution = new PropertyExpr.Substitution(lookup, false)
   }
 
   private def withProperties(
@@ -238,8 +238,8 @@ object Resolution {
   ): (DependencyManagement.Key, DependencyManagement.Values) = {
 
     val (key, values) = entry
-    val newKey = key.map(properties.substituteProps0)
-    val newValues = values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
+    val newKey = key.map(properties.substitution)
+    val newValues = values.mapButVersion(properties.substitution).mapVersion(properties.substitutionTrimmed)
     if ((newKey eq key) && (newValues eq values)) {
       entry
     } else (newKey, newValues)
@@ -248,7 +248,7 @@ object Resolution {
     values: DependencyManagement.Values,
     properties: PropertiesWrapper
   ): DependencyManagement.Values = {
-    values.mapButVersion(properties.substituteProps0).mapVersion(properties.substituteTrimmedProps)
+    values.mapButVersion(properties.substitution).mapVersion(properties.substitutionTrimmed)
   }
 
   /** Substitutes `properties` in `dependencies`.
@@ -265,29 +265,29 @@ object Resolution {
       val dep0 = dep
         .withVersionConstraint( {
           if (dep.parsedVersionConstraint.hasProperties) {
-            VersionConstraint0(dep.parsedVersionConstraint.applySubstitution(dep.versionConstraint.asString, properties.substituteTrimmedProps))
+            VersionConstraint0(dep.parsedVersionConstraint.applySubstitution(dep.versionConstraint.asString, properties.substitutionTrimmed))
           } else {
             dep.versionConstraint
           }
         })
         .copy(
           module = dep.module.copy(
-            organization = dep.module.organization.map(properties.substituteProps0),
-            name = dep.module.name.map(properties.substituteProps0)
+            organization = dep.module.organization.map(properties.substitution),
+            name = dep.module.name.map(properties.substitution)
           ),
           attributes = dep.attributes
-            .withType(dep.attributes.`type`.map(properties.substituteProps0))
-            .withClassifier(dep.attributes.classifier.map(properties.substituteProps0)),
+            .withType(dep.attributes.`type`.map(properties.substitution))
+            .withClassifier(dep.attributes.classifier.map(properties.substitution)),
           variantSelector = dep.variantSelector
             .asConfiguration
-            .map(_.map(properties.substituteProps0))
+            .map(_.map(properties.substitution))
             .map(VariantSelector.ConfigurationBased(_))
             .getOrElse(dep.variantSelector),
-          minimizedExclusions = dep.minimizedExclusions.map(properties.substituteProps0)
+          minimizedExclusions = dep.minimizedExclusions.map(properties.substitution)
         )
       val finalVariant = variant.asConfiguration match {
         case s @ Some(x) =>
-          val newConfig = x.map(properties.substituteProps0)
+          val newConfig = x.map(properties.substitution)
           Variant.Configuration(newConfig)
         case None =>
           variant
@@ -2076,8 +2076,8 @@ object Resolution {
     )
 
     project0
-      .withPackagingOpt(project0.packagingOpt.map(_.map(propertiesWrapper0.substituteProps0)))
-      .withVersion0(Version0(project0.parsedVersion0.substitute(project0.version0.asString, propertiesWrapper0.lookup, trim = false)))
+      .withPackagingOpt(project0.packagingOpt.map(_.map(propertiesWrapper0.substitution)))
+      .withVersion0(Version0(propertiesWrapper0.substitution.applyWithPropertyExpr(project0.version0.asString, project0.parsedVersion0)))
       .withDependencies0(
         standardDeps ++
           project0.parent0 // belongs to 1.5 & 1.6
