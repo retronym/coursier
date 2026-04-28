@@ -1850,8 +1850,7 @@ object Resolution {
     }
 
   @deprecated("Use dependencyManagementRequirements0 instead", "2.1.25")
-  def
-  dependencyManagementRequirements(
+  def dependencyManagementRequirements(
     project: Project
   ): Set[(Module, String)] =
     dependencyManagementRequirements0(project).map {

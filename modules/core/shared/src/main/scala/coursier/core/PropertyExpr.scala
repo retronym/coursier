@@ -8,7 +8,7 @@ sealed abstract class PropertyExpr {
   def hasProperties: Boolean = this match {
     case PropertyLiteral(_) => false
     case PropertyReference(_) => true
-    case Composite(_) => false
+    case Composite(_) => true
   }
   final def substitute(s: String, lookup: PropertyValueLookup, trim: Boolean): String = {
     this match {
