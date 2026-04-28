@@ -3,6 +3,8 @@ package coursier.core
 import coursier.core.Exclusions.{allNames, allOrganizations}
 import dataclass.data
 
+import scala.collection.immutable.HashSet
+import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
 /** This file defines a special-purpose structure for exclusions that has the following
@@ -187,8 +189,8 @@ object MinimizedExclusions {
     if (exclusions.isEmpty)
       zero
     else {
-      val excludeByOrg0  = Set.newBuilder[Organization]
-      val excludeByName0 = Set.newBuilder[ModuleName]
+      var excludeByOrg0: mutable.ReusableBuilder[Organization, HashSet[Organization]] = null;
+      var excludeByName0: mutable.ReusableBuilder[ModuleName, HashSet[ModuleName]] = null;
       var remaining0     = exclusions
 
       val it    = exclusions.iterator
@@ -198,10 +200,13 @@ object MinimizedExclusions {
         if (excl._1 == allOrganizations) {
           if (excl._2 == allNames)
             isOne = true
-          else
+          else {
+            if (excludeByName0 == null) excludeByName0 = HashSet.newBuilder[ModuleName]
             excludeByName0 += excl._2
+          }
           remaining0 -= excl
         } else if (excl._2 == allNames) {
+          if (excludeByOrg0 == null) excludeByOrg0 = HashSet.newBuilder[Organization]
           excludeByOrg0 += excl._1
           remaining0 -= excl
         }
@@ -211,8 +216,8 @@ object MinimizedExclusions {
         one
       else {
 
-        val byOrg = excludeByOrg0.result()
-        val byName = excludeByName0.result()
+        val byOrg = if (excludeByOrg0 == null) HashSet.empty[Organization] else excludeByOrg0.result()
+        val byName = if (excludeByName0 == null) HashSet.empty[ModuleName] else excludeByName0.result()
         val specific = remaining0
         MinimizedExclusions(ExcludeSpecific(
           byOrg,
