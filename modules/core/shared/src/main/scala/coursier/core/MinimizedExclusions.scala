@@ -1,7 +1,11 @@
 package coursier.core
 
-import coursier.core.Exclusions.{allOrganizations, allNames}
+import coursier.core.Exclusions.{allNames, allOrganizations}
 import dataclass.data
+
+import scala.collection.immutable.HashSet
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 
 /** This file defines a special-purpose structure for exclusions that has the following
   * properties/goals:
@@ -63,7 +67,8 @@ object MinimizedExclusions {
 
     override def size(): Int                              = 1
     override def subsetOf(other: ExclusionData): Boolean  = other == ExcludeAll
-    override def toSet(): Set[(Organization, ModuleName)] = Set((allOrganizations, allNames))
+    private val _toSet: Set[(Organization, ModuleName)] = Set((allOrganizations, allNames))
+    override def toSet(): Set[(Organization, ModuleName)] = _toSet
 
     def hasProperties: Boolean = false
   }
@@ -73,6 +78,7 @@ object MinimizedExclusions {
     byModule: Set[ModuleName],
     specific: Set[(Organization, ModuleName)]
   ) extends ExclusionData {
+
     override def apply(org: Organization, module: ModuleName): Boolean =
       !byModule(module) &&
       !byOrg(org) &&
@@ -85,14 +91,18 @@ object MinimizedExclusions {
         case other: ExcludeSpecific =>
           val joinedByOrg    = byOrg ++ other.byOrg
           val joinedByModule = byModule ++ other.byModule
-
-          val joinedSpecific =
-            specific.filter { case e @ (org, module) =>
+          def fullJoin = specific ++ other.specific
+          def filteredJoin = scala.collection.immutable.HashSet.from(
+            specific.iterator.filter { case e @ (org, module) =>
               !other.byOrg(org) && !other.byModule(module)
             } ++
-              other.specific.filter { case e @ (org, module) =>
+              other.specific.iterator.filter { case e @ (org, module) =>
                 !byOrg(org) && !byModule(module)
-              }
+              })
+
+          val joinedSpecific =
+            if (joinedByOrg.isEmpty && joinedByModule.isEmpty) fullJoin
+            else filteredJoin
 
           ExcludeSpecific(joinedByOrg, joinedByModule, joinedSpecific)
       }
@@ -123,14 +133,29 @@ object MinimizedExclusions {
       : (Boolean, Set[Organization], Set[ModuleName], Set[(Organization, ModuleName)]) =
       (false, byOrg, byModule, specific)
 
-    override def map(f: String => String): ExclusionData =
-      ExcludeSpecific(
-        byOrg.map(_.map(f)),
-        byModule.map(_.map(f)),
-        specific.map { case (org, module) =>
-          org.map(f) -> module.map(f)
+    override def map(f: String => String): ExclusionData = {
+      def mapSetSkewedToNoOp[T](s: Set[T])(f: T => T): Set[T] = {
+        val buffer = new ArrayBuffer[T](s.size)
+        var changed = false
+        for (elem <- s) {
+          val t = f(elem)
+          if (t != elem) changed = true
+          buffer += t
         }
-      )
+        if (changed) Set.from(buffer) else s
+      }
+
+      val newByOrg = mapSetSkewedToNoOp(byOrg)(_.map(f))
+      val newByModule = mapSetSkewedToNoOp(byModule)(_.map(f))
+      val newSpecific = mapSetSkewedToNoOp(specific) { case kv@(org, module) =>
+        val newOrg = org.map(f)
+        val newModule = module.map(f)
+        if (newOrg == org && newModule == module) kv
+        else (org.map(f), module.map(f))
+      }
+      if ((newByOrg eq byOrg) && (newByModule eq byModule) && (newSpecific eq specific)) this
+      else new ExcludeSpecific(newByOrg, newByModule, newSpecific)
+    }
 
     override def size(): Int = byOrg.size + byModule.size + specific.size
 
@@ -144,8 +169,15 @@ object MinimizedExclusions {
           specific.subsetOf(other.specific)
       }
 
-    override def toSet(): Set[(Organization, ModuleName)] =
-      byOrg.map(_ -> allNames) ++ byModule.map(allOrganizations -> _) ++ specific
+    private lazy val _toSet = {
+      val b = Set.newBuilder[(Organization, ModuleName)]
+      byOrg.foreach(org => b.addOne((org, allNames)))
+      byModule.foreach(name => b.addOne((allOrganizations, name)))
+      b.addAll(specific)
+      b.result()
+    }
+
+    override def toSet(): Set[(Organization, ModuleName)] = _toSet
 
     lazy val hasProperties: Boolean =
       byOrg.exists(_.value.contains("$")) ||
@@ -157,34 +189,42 @@ object MinimizedExclusions {
     if (exclusions.isEmpty)
       zero
     else {
-
-      val excludeByOrg0  = Set.newBuilder[Organization]
-      val excludeByName0 = Set.newBuilder[ModuleName]
-      val remaining0     = Set.newBuilder[(Organization, ModuleName)]
+      var excludeByOrg0: mutable.ReusableBuilder[Organization, HashSet[Organization]] = null;
+      var excludeByName0: mutable.ReusableBuilder[ModuleName, HashSet[ModuleName]] = null;
+      var remaining0     = exclusions
 
       val it    = exclusions.iterator
       var isOne = false
       while (it.hasNext && !isOne) {
         val excl = it.next()
-        if (excl._1 == allOrganizations)
+        if (excl._1 == allOrganizations) {
           if (excl._2 == allNames)
             isOne = true
-          else
+          else {
+            if (excludeByName0 == null) excludeByName0 = HashSet.newBuilder[ModuleName]
             excludeByName0 += excl._2
-        else if (excl._2 == allNames)
+          }
+          remaining0 -= excl
+        } else if (excl._2 == allNames) {
+          if (excludeByOrg0 == null) excludeByOrg0 = HashSet.newBuilder[Organization]
           excludeByOrg0 += excl._1
-        else
-          remaining0 += excl
+          remaining0 -= excl
+        }
       }
 
       if (isOne)
         one
-      else
+      else {
+
+        val byOrg = if (excludeByOrg0 == null) HashSet.empty[Organization] else excludeByOrg0.result()
+        val byName = if (excludeByName0 == null) HashSet.empty[ModuleName] else excludeByName0.result()
+        val specific = remaining0
         MinimizedExclusions(ExcludeSpecific(
-          excludeByOrg0.result(),
-          excludeByName0.result(),
-          remaining0.result()
+          byOrg,
+          byName,
+          specific
         ))
+      }
     }
 }
 

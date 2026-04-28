@@ -69,7 +69,7 @@ object Deps {
     def tika                     = mvn"org.apache.tika:tika-core:3.2.3"
     def ujson                    = mvn"com.lihaoyi::ujson:4.3.2"
     def utest                    = mvn"com.lihaoyi::utest::0.9.1"
-    def versions                 = mvn"io.get-coursier::versions::0.5.1"
+    def versions                 = mvn"io.get-coursier::versions::0.5.3-SNAPSHOT"
     def windowsAnsi              = mvn"io.github.alexarchambault.windows-ansi:windows-ansi:0.0.6"
     def windowsAnsiPs =
       mvn"io.github.alexarchambault.windows-ansi:windows-ansi-ps:${windowsAnsi.version}"
@@ -96,7 +96,7 @@ object Deps {
     def scala3   = "3.3.6"
     def scala213 = "2.13.16"
     def scala212 = "2.12.20"
-    val all      = Seq(scala213, scala212)
+    val all      = Seq(scala213)
 
     def scalaJs = "1.19.0"
   }

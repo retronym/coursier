@@ -35,7 +35,10 @@ import java.util.concurrent.ConcurrentMap
   @since("2.1.25")
   endorseStrictVersions: Boolean = false
 ) {
-  assertValid(versionConstraint.asString, "version")
+  //assertValid(versionConstraint.asString, "version")
+
+  lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
+
   def moduleVersionConstraint: (Module, VersionConstraint0) = (module, versionConstraint)
 
   @deprecated("Prefer moduleVersionConstraint instead", "2.1.25")
@@ -259,7 +262,10 @@ import java.util.concurrent.ConcurrentMap
   )
   def withExclusions(newExclusions: Set[(Organization, ModuleName)]): Dependency =
     withMinimizedExclusions(MinimizedExclusions(newExclusions))
-
+  private[core] def withVersionConstraintConserve(versionConstraint: VersionConstraint0): Dependency = {
+    if (versionConstraint == this.versionConstraint) this
+    else withVersionConstraint(versionConstraint)
+  }
   @deprecated(
     "This method will be dropped in favor of minimizedExclusions() in a future version",
     "2.1.0-M6"
@@ -455,8 +461,23 @@ import java.util.concurrent.ConcurrentMap
     s"Dependency(${fields.mkString(", ")})"
   }
 
-  override lazy val hashCode: Int =
-    tuple.hashCode()
+  override lazy val hashCode: Int = {
+    var h = scala.util.hashing.MurmurHash3.stringHash("Dependency")
+    h = scala.util.hashing.MurmurHash3.mix(h, module.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, versionConstraint.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, variantSelector.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, minimizedExclusions.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, publication.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, optional.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, transitive.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, overrides.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, deprecatedBoms.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, bomDependencies.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, overridesMap.hashCode)
+    h = scala.util.hashing.MurmurHash3.mix(h, endorseStrictVersions.hashCode)
+    scala.util.hashing.MurmurHash3.finalizeHash(h, 13)
+  }
+
 }
 
 object Dependency {
@@ -477,23 +498,25 @@ object Dependency {
     bomDependencies: Seq[BomDependency],
     overridesMap: Overrides,
     endorseStrictVersions: Boolean
-  ): Dependency =
-    coursier.util.Cache.cacheMethod(instanceCache)(
-      new Dependency(
-        module,
-        versionConstraint,
-        variantSelector,
-        minimizedExclusions,
-        publication,
-        optional,
-        transitive,
-        overrides,
-        boms,
-        bomDependencies,
-        overridesMap,
-        endorseStrictVersions
-      )
+  ): Dependency = {
+    val dep = new Dependency(
+      module,
+      versionConstraint,
+      variantSelector,
+      minimizedExclusions,
+      publication,
+      optional,
+      transitive,
+      overrides,
+      boms,
+      bomDependencies,
+      overridesMap,
+      endorseStrictVersions
     )
+//    if (overrides.isEmpty) coursier.util.Cache.cacheMethod(instanceCache)(dep)
+//    else dep
+    dep
+  }
 
   @deprecated("Use the override accepting a VersionConstraint", "2.1.25")
   def apply(

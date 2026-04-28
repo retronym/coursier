@@ -1,9 +1,6 @@
 package coursier.core
 
-import coursier.version.{
-  VersionConstraint => VersionConstraint0,
-  VersionInterval => VersionInterval0
-}
+import coursier.version.{VersionConstraint => VersionConstraint0, VersionInterval => VersionInterval0}
 import dataclass.{data, since}
 
 import scala.collection.mutable
@@ -12,12 +9,14 @@ object DependencyManagement {
   type Map        = scala.collection.immutable.Map[Key, Values]
   type GenericMap = scala.collection.Map[Key, Values]
 
-  @data class Key(
+  @data(cachedHashCode = true) class Key(
     organization: Organization,
     name: ModuleName,
     `type`: Type,
     classifier: Classifier
   ) {
+    lazy val hasProperties = organization.parsedValue.hasProperties || name.parsedValue.hasProperties || `type`.parsedValue.hasProperties || classifier.parsedValue.hasProperties
+
     def map(f: String => String): Key = {
       val newOrg        = organization.map(f)
       val newName       = name.map(f)
@@ -49,7 +48,7 @@ object DependencyManagement {
       dep.depManagementKey
   }
 
-  @data class Values(
+  @data(cachedHashCode = true) class Values(
     config: Configuration,
     versionConstraint: VersionConstraint0,
     minimizedExclusions: MinimizedExclusions,
@@ -109,10 +108,12 @@ object DependencyManagement {
       else
         this
     }
+    private lazy val parsedConfig = PropertyExpr.parse(config.value)
     def mapButVersion(f: String => String): Values = {
-      val newConfig = config.map(f)
+      val newConfigValue = parsedConfig.applySubstitution(config.value, f)
+      val newConfig = if (newConfigValue eq config.value) config else Configuration(newConfigValue)
       val newExcl   = minimizedExclusions.map(f)
-      if (config != newConfig || minimizedExclusions != newExcl)
+      if ((config != newConfig) || (minimizedExclusions ne newExcl))
         Values(
           config = newConfig,
           versionConstraint = versionConstraint,
@@ -123,12 +124,16 @@ object DependencyManagement {
       else
         this
     }
+    private lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
-      val newVersion = f(versionConstraint.asString)
-      if (versionConstraint.asString == newVersion) this
-      else withVersionConstraint(VersionConstraint0(newVersion))
+      val origVersionStr = versionConstraint.asString
+      val newVersionStr = parsedVersionConstraint.applySubstitution(origVersionStr, f)
+      if (origVersionStr eq newVersionStr) this
+      else withVersionConstraint(VersionConstraint0(newVersionStr))
     }
-
+    val hasProperties =  config.value.contains("$") ||
+      versionConstraint.asString.contains("$") ||
+      minimizedExclusions.hasProperties
     override def toString(): String = {
       var fields = Seq(
         config.toString,
@@ -210,36 +215,44 @@ object DependencyManagement {
       b.result().toMap
     }
 
-  def addAll(
-    initialMap: Map,
-    entries: Seq[GenericMap],
-    composeValues: Boolean = true
-  ): GenericMap =
-    if (entries.forall(_.isEmpty))
-      initialMap
-    else {
-      val b = new mutable.HashMap[Key, Values]
-      b.sizeHint(entries.iterator.map(_.size).sum)
-      val it = entries.iterator.flatMap(_.iterator)
-      while (it.hasNext) {
-        val (key0, incomingValues) = it.next()
-        val newValuesOpt = b.get(key0).orElse(initialMap.get(key0)) match {
-          case Some(previousValues) =>
-            if (composeValues)
-              Some(previousValues.orElse(incomingValues))
-                .filter(_ != previousValues)
-            else
-              None
-          case None =>
-            Some(incomingValues)
+  case class AddAllResult(map: Map, globalCount: Int)
+
+  def addAll(initialMap: Map, entries: Seq[GenericMap], composeValues: Boolean = true): AddAllResult = {
+    var globalCount = 0
+    val builder: coursier.util.HashMapBuilder[Key, Values] = coursier.util.HashMapBuilderFactory.apply
+
+    val allEntries = if (initialMap.isEmpty) entries.toList else initialMap :: entries.toList
+    allEntries match {
+      case head :: tail =>
+        builder ++= head
+
+        val it = tail.iterator
+        while (it.hasNext) {
+          it.next().foreachEntry {
+            case (key, incoming) =>
+
+              val prev = builder.getOrNull(key)
+
+              if (prev != null) {
+                if (composeValues) {
+                  val composed = prev.orElse(incoming)
+                  if (composed != prev) {
+                    if (composed.global) globalCount += 1
+                    builder += (key -> composed)
+                  }
+                }
+              } else {
+                if (incoming.global) globalCount += 1
+                builder += (key -> incoming)
+              }
+          }
         }
-        for (newValues <- newValuesOpt)
-          b += ((key0, newValues))
-      }
-      if (b.isEmpty) initialMap
-      else if (initialMap.isEmpty) b
-      else initialMap ++ b
+
+      case Nil =>
+
     }
+    AddAllResult(builder.result(), globalCount)
+  }
 
   def addDependencies(
     map: Map,

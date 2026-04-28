@@ -1,26 +1,45 @@
 package coursier.core
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ConcurrentMap
-
 import coursier.core.Validation._
 import coursier.error.VariantError
 import coursier.util.Artifact
 import coursier.version.{Version => Version0}
 import dataclass.data
 
-final case class Organization(value: String) extends AnyVal {
-  def map(f: String => String): Organization =
-    Organization(f(value))
+import scala.util.hashing.MurmurHash3
+
+final case class Organization(value: String) {
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Organization = {
+    val o = parsedValue.applySubstitution(value, f)
+    if (o eq value) this
+    else Organization(o)
+  }
+
+  override val hashCode = MurmurHash3.productHash(this)
 }
 
 object Organization {
+  private[coursier] val instanceCache: ConcurrentMap[Any, Any] =
+    coursier.util.Cache.createCache[Any]()
+
+  def apply(value: String): Organization =
+    coursier.util.Cache.cacheMethod(instanceCache)(new Organization(value)).asInstanceOf[Organization]
+
   implicit val ordering: Ordering[Organization] =
     Ordering[String].on(_.value)
 }
 
-final case class ModuleName(value: String) extends AnyVal {
-  def map(f: String => String): ModuleName =
-    ModuleName(f(value))
+final case class ModuleName(value: String) {
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): ModuleName = {
+    val newName = parsedValue.applySubstitution(value, f)
+    if (newName eq value) this
+    else ModuleName(newName)
+  }
+  override lazy val hashCode = MurmurHash3.productHash(this)
 }
 
 object ModuleName {
@@ -42,11 +61,6 @@ object ModuleName {
 ) {
   assertValid(organization.value, "organization")
   assertValid(name.value, "module name")
-
-  def trim: Module = copy(
-    organization.map(_.trim),
-    name.map(_.trim)
-  )
 
   private def attributesStr = attributes.toSeq
     .sortBy { case (k, _) => k }
@@ -91,13 +105,17 @@ object Module {
     coursier.util.Cache.cacheMethod(instanceCache)(new Module(organization, name, attributes))
 }
 
-final case class Type(value: String) extends AnyVal {
+final case class Type(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
-  def map(f: String => String): Type =
-    Type(f(value))
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Type = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Type(newValue)
+  }
 
   def asExtension: Extension =
     Extension(value)
@@ -141,13 +159,18 @@ object Type {
   }
 }
 
-final case class Classifier(value: String) extends AnyVal {
+final case class Classifier(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
-  def map(f: String => String): Classifier =
-    Classifier(f(value))
+
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Classifier = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Classifier(newValue)
+  }
 }
 
 object Classifier {
@@ -181,36 +204,53 @@ object Extension {
   val empty = Extension("")
 }
 
-final case class Configuration(value: String) extends AnyVal {
+final case class Configuration(value: String) {
   def isEmpty: Boolean =
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
   def -->(target: Configuration): Configuration =
     Configuration(s"$value->${target.value}")
-  def map(f: String => String): Configuration =
-    Configuration(f(value))
+
+  lazy val parsedValue = PropertyExpr.parse(value)
+  def map(f: String => String): Configuration = {
+    val newValue = parsedValue.applySubstitution(value, f)
+    if (newValue eq value) this
+    else Configuration(newValue)
+  }
+  override lazy val hashCode = MurmurHash3.productHash(this)
 }
 
 object Configuration {
+  def apply(value: String): Configuration = {
+    // looks weird to this for a value class, but we're basically interning the String
+    // without the downsides of String.intern
+    standard.getOrElse(value, null) match {
+      case null => new Configuration(value)
+      case conf => conf
+    }
+  }
   implicit val ordering: Ordering[Configuration] =
     Ordering[String].on(_.value)
 
-  val empty = Configuration("")
+  val empty = new Configuration("")
 
-  val compile = Configuration("compile")
-  val runtime = Configuration("runtime")
-  val test    = Configuration("test")
+  val compile = new Configuration("compile")
+  val runtime = new Configuration("runtime")
+  val test    = new Configuration("test")
 
-  val default        = Configuration("default")
-  val defaultCompile = Configuration("default(compile)")
-  val defaultRuntime = Configuration("default(runtime)")
+  val default        = new Configuration("default")
+  val defaultCompile = new Configuration("default(compile)")
+  val defaultRuntime = new Configuration("default(runtime)")
 
-  val provided = Configuration("provided")
-  val `import` = Configuration("import")
-  val optional = Configuration("optional")
+  val provided = new Configuration("provided")
+  val `import` = new Configuration("import")
+  val optional = new Configuration("optional")
 
-  val all = Configuration("*")
+  val all = new Configuration("*")
+  private val standard: Map[String, Configuration] = Vector[Configuration](
+    compile, runtime, test, default, defaultCompile, defaultRuntime, provided, `import`, optional, all
+  ).map(x => (x.value, x)).toMap
 
   def join(confs: Configuration*): Configuration =
     Configuration(confs.map(_.value).mkString(";"))
@@ -278,6 +318,7 @@ object Attributes {
   variantPublications: Map[Variant.Attributes, Seq[VariantPublication]]
 ) {
 
+  lazy val parsedVersion0 = PropertyExpr.parse(version0.asString)
   @deprecated("Use dependencies0 instead", "2.1.25")
   def dependencies: Seq[(Configuration, Dependency)] =
     dependencies0.map {
@@ -571,6 +612,22 @@ object Attributes {
 }
 
 object Project {
+
+  private[this] val legacyPropertiesReporter =
+    new ConcurrentHashMap[Int, java.lang.Boolean]
+
+  private[this] val stackFrameExclusionPrefixes =
+    Array(
+      "java.lang.Thread",
+      "coursier.core.Project",
+      "scala.",
+      "sun.reflect.",
+      "jdk.internal.reflect.",
+      "java.lang.reflect.",
+      "org.openjdk.jmh."
+    )
+
+
 
   @deprecated("Use the override accepting Version-s instead", "2.1.25")
   def apply(
@@ -940,10 +997,14 @@ object ArtifactSource {
 }
 
 private[coursier] object Validation {
-  def validateCoordinate(value: String, name: String): Either[String, String] =
-    Seq('/', '\\').foldLeft[Either[String, String]](Right(value)) { (acc, char) =>
-      acc.filterOrElse(value => !value.contains(char), s"$name $value contains invalid '$char'")
-    }
+  def validateCoordinate(value: String, name: String): Either[String, String] = {
+    if (value.contains('/'))
+      Left(s"$name $value contains invalid '/' character")
+    else if (value.contains('\\'))
+      Left(s"$name $value contains invalid '\\' character")
+    else
+      Right(value)
+  }
 
   def assertValid(value: String, name: String): Unit =
     validateCoordinate(value, name).fold(msg => throw new AssertionError(msg), identity)

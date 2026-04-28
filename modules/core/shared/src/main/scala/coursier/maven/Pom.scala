@@ -8,6 +8,7 @@ import coursier.core.{
   Dependency,
   Extension,
   Info,
+  LazyProperties,
   Module,
   ModuleName,
   Organization,
@@ -54,24 +55,24 @@ object Pom {
   ): Either[String, Module] =
     for {
       organization <- {
-        val e = text(node, "groupId", "Organization")
+        val e = text(node, "groupId", "Organization", trim = true)
           .flatMap(validateCoordinate(_, "groupId"))
           .map(Organization(_))
         defaultGroupId.fold(e)(g => Right(e.getOrElse(g)))
       }
       name <- {
-        val n = text(node, "artifactId", "Name")
+        val n = text(node, "artifactId", "Name", trim = true)
           .flatMap(validateCoordinate(_, "artifactId"))
           .map(ModuleName(_))
         defaultArtifactId.fold(n)(n0 => Right(n.getOrElse(n0)))
       }
-    } yield Module(organization, name, Map.empty).trim
+    } yield Module(organization, name, Map.empty)
 
   private def readVersion(node: Node): Version =
-    Version(text(node, "version", "Version").getOrElse("").trim)
+    Version(text(node, "version", "Version", trim = true).getOrElse(""))
 
   private def readVersionConstraint(node: Node): VersionConstraint =
-    VersionConstraint(text(node, "version", "Version").getOrElse("").trim)
+    VersionConstraint(text(node, "version", "Version", trim = true).getOrElse(""))
 
   def dependency(node: Node): Either[String, (Configuration, Dependency)] =
     module(node).flatMap { mod =>
@@ -335,7 +336,7 @@ object Pom {
           case (conf, dep) =>
             (Variant.Configuration(conf), dep)
         },
-        properties,
+        LazyProperties.merge(Seq(properties)),
         profiles,
         None,
         None,
