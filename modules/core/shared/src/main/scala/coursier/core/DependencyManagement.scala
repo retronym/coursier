@@ -1,9 +1,6 @@
 package coursier.core
 
-import coursier.version.{
-  VersionConstraint => VersionConstraint0,
-  VersionInterval => VersionInterval0
-}
+import coursier.version.{VersionConstraint => VersionConstraint0, VersionInterval => VersionInterval0}
 import dataclass.{data, since}
 
 import scala.collection.mutable
@@ -18,6 +15,8 @@ object DependencyManagement {
     `type`: Type,
     classifier: Classifier
   ) {
+    private[coursier] lazy val hasProperties = organization.parsedValue.hasProperties || name.parsedValue.hasProperties || `type`.parsedValue.hasProperties || classifier.parsedValue.hasProperties
+
     def map(f: String => String): Key = {
       val newOrg        = organization.map(f)
       val newName       = name.map(f)
@@ -109,8 +108,9 @@ object DependencyManagement {
       else
         this
     }
+    private lazy val parsedConfig = PropertyExpr.parse(config.value)
     def mapButVersion(f: String => String): Values = {
-      val newConfig = config.map(f)
+      val newConfig = Configuration(parsedConfig.applySubstitution(config.value, f))
       val newExcl   = minimizedExclusions.map(f)
       if (config != newConfig || minimizedExclusions != newExcl)
         Values(
@@ -123,12 +123,16 @@ object DependencyManagement {
       else
         this
     }
+    private lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
-      val newVersion = f(versionConstraint.asString)
+      val origVersionStr = versionConstraint.asString
+      val newVersion = parsedVersionConstraint.applySubstitution(origVersionStr, f)
       if (versionConstraint.asString == newVersion) this
       else withVersionConstraint(VersionConstraint0(newVersion))
     }
-
+    val hasProperties =  config.value.contains("$") ||
+      versionConstraint.asString.contains("$") ||
+      minimizedExclusions.hasProperties
     override def toString(): String = {
       var fields = Seq(
         config.toString,

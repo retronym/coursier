@@ -78,13 +78,7 @@ object Overrides {
       else this
     }
     lazy val hasProperties = map.exists { t =>
-      t._1.organization.value.contains("$") ||
-      t._1.name.value.contains("$") ||
-      t._1.classifier.value.contains("$") ||
-      t._1.`type`.value.contains("$") ||
-      t._2.config.value.contains("$") ||
-      t._2.versionConstraint.asString.contains("$") ||
-      t._2.minimizedExclusions.hasProperties
+      t._1.hasProperties || t._2.hasProperties
     }
     def mapMap(
       f: DependencyManagement.GenericMap => Option[DependencyManagement.GenericMap]
