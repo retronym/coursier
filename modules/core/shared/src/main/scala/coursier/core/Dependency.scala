@@ -37,7 +37,7 @@ import java.util.concurrent.ConcurrentMap
 ) {
   assertValid(versionConstraint.asString, "version")
 
-  lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
+  private[coursier] lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
 
   def moduleVersionConstraint: (Module, VersionConstraint0) = (module, versionConstraint)
 

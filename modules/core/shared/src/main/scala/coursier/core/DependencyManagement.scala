@@ -15,7 +15,7 @@ object DependencyManagement {
     `type`: Type,
     classifier: Classifier
   ) {
-    lazy val hasProperties = organization.parsedValue.hasProperties || name.parsedValue.hasProperties || `type`.parsedValue.hasProperties || classifier.parsedValue.hasProperties
+    private[coursier] lazy val hasProperties = organization.parsedValue.hasProperties || name.parsedValue.hasProperties || `type`.parsedValue.hasProperties || classifier.parsedValue.hasProperties
 
     def map(f: String => String): Key = {
       val newOrg        = organization.map(f)

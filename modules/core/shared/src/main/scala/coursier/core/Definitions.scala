@@ -10,7 +10,7 @@ import dataclass.data
 import scala.util.hashing.MurmurHash3
 
 final case class Organization(value: String) {
-  lazy val parsedValue = PropertyExpr.parse(value)
+  private[coursier] lazy val parsedValue = PropertyExpr.parse(value)
   def map(f: String => String): Organization = {
     val o = parsedValue.applySubstitution(value, f)
     if (o eq value) this
@@ -26,7 +26,7 @@ object Organization {
 }
 
 final case class ModuleName(value: String) {
-  lazy val parsedValue = PropertyExpr.parse(value)
+  private[coursier] lazy val parsedValue = PropertyExpr.parse(value)
   def map(f: String => String): ModuleName = {
     val newName = parsedValue.applySubstitution(value, f)
     if (newName eq value) this
@@ -108,7 +108,7 @@ final case class Type(value: String) {
     value.isEmpty
   def nonEmpty: Boolean =
     value.nonEmpty
-  lazy val parsedValue = PropertyExpr.parse(value)
+  private[coursier] lazy val parsedValue = PropertyExpr.parse(value)
   def map(f: String => String): Type = {
     val newValue = parsedValue.applySubstitution(value, f)
     if (newValue eq value) this
@@ -163,7 +163,7 @@ final case class Classifier(value: String) {
   def nonEmpty: Boolean =
     value.nonEmpty
 
-  lazy val parsedValue = PropertyExpr.parse(value)
+  private[coursier] lazy val parsedValue = PropertyExpr.parse(value)
   def map(f: String => String): Classifier = {
     val newValue = parsedValue.applySubstitution(value, f)
     if (newValue eq value) this
@@ -210,7 +210,7 @@ final case class Configuration(value: String) {
   def -->(target: Configuration): Configuration =
     Configuration(s"$value->${target.value}")
 
-  lazy val parsedValue = PropertyExpr.parse(value)
+  private[coursier] lazy val parsedValue = PropertyExpr.parse(value)
   def map(f: String => String): Configuration = {
     val newValue = parsedValue.applySubstitution(value, f)
     if (newValue eq value) this
@@ -304,7 +304,7 @@ object Attributes {
   variantPublications: Map[Variant.Attributes, Seq[VariantPublication]]
 ) {
 
-  lazy val parsedVersion0 = PropertyExpr.parse(version0.asString)
+  private[coursier] lazy val parsedVersion0 = PropertyExpr.parse(version0.asString)
   @deprecated("Use dependencies0 instead", "2.1.25")
   def dependencies: Seq[(Configuration, Dependency)] =
     dependencies0.map {
