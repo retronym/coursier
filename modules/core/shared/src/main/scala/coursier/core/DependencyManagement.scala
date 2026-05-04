@@ -127,10 +127,10 @@ object DependencyManagement {
       else
         this
     }
-    private def parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
+    private lazy val parsedVersionConstraint = PropertyExpr.parse(versionConstraint.asString)
     def mapVersion(f: String => String): Values = {
       val origVersionStr = versionConstraint.asString
-      val newVersion     = PropertyExpr.applySubstitution(origVersionStr, f)
+      val newVersion     = parsedVersionConstraint.applySubstitution(origVersionStr, f)
       if (versionConstraint.asString == newVersion) this
       else withVersionConstraint(VersionConstraint0(newVersion))
     }
