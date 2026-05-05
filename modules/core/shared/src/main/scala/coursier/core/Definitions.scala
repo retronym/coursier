@@ -247,7 +247,7 @@ object Attributes {
   val empty = Attributes(Type.empty, Classifier.empty)
 }
 
-@data class Project(
+@data(cachedHashCode = true) class Project(
   module: Module,
   version0: Version0,
   dependencies0: Seq[(Variant, Dependency)],
@@ -640,8 +640,6 @@ object Attributes {
     }
     lines.result().mkString("\n")
   }
-
-  final override lazy val hashCode = tuple.hashCode
 }
 
 object Project {
