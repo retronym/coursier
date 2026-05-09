@@ -73,9 +73,18 @@ private[coursier] object PropertyExpr {
       PropertyLiteral(s)
     else parseSubstituteProps(s)
 
+  def parseAndSubstitute(s: String, lookup: PropertyValueLookup, trim: Boolean): String =
+    if (s.indexOf(InterpolationStartToken) < 0)
+      s
+    else {
+      parseSubstituteProps(s).substitute(s, lookup, trim)
+    }
+
   final class Substitution(lookup: PropertyValueLookup, trim: Boolean) extends (String => String) {
-    override def apply(v1: String): String =
+    override def apply(v1: String): String = {
       PropertyExpr.parse(v1).substitute(v1, lookup, trim)
+    }
+
     def applyWithPropertyExpr(v1: String, propertyExpr: PropertyExpr): String =
       propertyExpr.substitute(v1, lookup, trim)
   }
