@@ -74,16 +74,11 @@ private[coursier] object PropertyExpr {
     else parseSubstituteProps(s)
 
   def parseAndSubstitute(s: String, lookup: PropertyValueLookup, trim: Boolean): String =
-    if (s.indexOf(InterpolationStartToken) < 0)
-      s
-    else {
-      parseSubstituteProps(s).substitute(s, lookup, trim)
-    }
+    parseAndSubstituteProps(s, lookup, trim)
 
   final class Substitution(lookup: PropertyValueLookup, trim: Boolean) extends (String => String) {
-    override def apply(v1: String): String = {
-      PropertyExpr.parse(v1).substitute(v1, lookup, trim)
-    }
+    override def apply(v1: String): String =
+      PropertyExpr.parseAndSubstituteProps(v1, lookup, trim)
 
     def applyWithPropertyExpr(v1: String, propertyExpr: PropertyExpr): String =
       propertyExpr.substitute(v1, lookup, trim)
@@ -211,6 +206,104 @@ private[coursier] object PropertyExpr {
         case _ => Composite(resultParts)
       }
     }
+  }
+
+  /** Fused parse + substitute: resolves property expressions in `s` without allocating
+    * PropertyExpr instances in the common cases (no interpolation, single reference).
+    */
+  private def parseAndSubstituteProps(
+    s: String,
+    lookup: PropertyValueLookup,
+    trim: Boolean
+  ): String = {
+    val firstTokenIdx = s.indexOf(InterpolationStartToken)
+    if (firstTokenIdx == -1)
+      return s
+
+    val startLen = InterpolationStartToken.length
+    val endLen   = InterpolationEndToken.length
+
+    // Single-reference fast path: "${name}" with no surrounding text and no further tokens
+    val firstEnd = s.indexOf(InterpolationEndToken, firstTokenIdx + startLen)
+    if (firstEnd != -1 && firstTokenIdx == 0 && firstEnd + endLen == s.length) {
+      // Entire string is a single "${name}" reference
+      val name = s.substring(startLen, firstEnd)
+      val resolvedExpr = lookup.lookupOrNull(name)
+      if (resolvedExpr == null) return s
+      val result = try resolvedExpr match {
+        case PropertyLiteral(v) => v
+        case spe: SimplePropertyExpr =>
+          resolvePartToString(spe, lookup, trim, Nil, 1)
+        case Composite(ps) =>
+          renderSubstitutions(s, ps, lookup, trim, Nil, forceSubstitute = true, 1)
+      }
+      catch {
+        case _: CyclicPropertyException => return s
+      }
+      return if (trim) result.trim else result
+    }
+
+    // General case: multiple tokens or mixed literal+reference
+    // First pass: check if any reference resolves (avoid StringBuilder allocation)
+    var probeIdx    = firstTokenIdx
+    var hasSubst    = false
+    while (probeIdx != -1 && probeIdx < s.length && !hasSubst) {
+      val endIdx = s.indexOf(InterpolationEndToken, probeIdx + startLen)
+      if (endIdx != -1) {
+        val name = s.substring(probeIdx + startLen, endIdx)
+        if (lookup.lookupOrNull(name) != null) hasSubst = true
+        probeIdx = s.indexOf(InterpolationStartToken, endIdx + endLen)
+      }
+      else probeIdx = -1
+    }
+    if (!hasSubst) return s
+
+    // Second pass: build result string directly
+    val sb  = new java.lang.StringBuilder(s.length)
+    var idx = 0
+    try {
+      while (idx < s.length) {
+        val startIdx =
+          if (idx == 0) firstTokenIdx else s.indexOf(InterpolationStartToken, idx)
+
+        if (startIdx == -1) {
+          sb.append(s, idx, s.length)
+          idx = s.length
+        }
+        else {
+          if (startIdx > idx)
+            sb.append(s, idx, startIdx)
+
+          val endIdx = s.indexOf(InterpolationEndToken, startIdx + startLen)
+
+          if (endIdx != -1) {
+            val name         = s.substring(startIdx + startLen, endIdx)
+            val resolvedExpr = lookup.lookupOrNull(name)
+            if (resolvedExpr == null)
+              sb.append(s, startIdx, endIdx + endLen)
+            else {
+              val result = resolvedExpr match {
+                case PropertyLiteral(v) => v
+                case spe: SimplePropertyExpr =>
+                  resolvePartToString(spe, lookup, trim, Nil, 1)
+                case Composite(ps) =>
+                  renderSubstitutions("", ps, lookup, trim, Nil, forceSubstitute = true, 1)
+              }
+              sb.append(if (trim) result.trim else result)
+            }
+            idx = endIdx + endLen
+          }
+          else {
+            sb.append(InterpolationStartToken.charAt(0))
+            idx = startIdx + 1
+          }
+        }
+      }
+    }
+    catch {
+      case _: CyclicPropertyException => return s
+    }
+    sb.toString
   }
 
   private def appendLiteralToArray(
